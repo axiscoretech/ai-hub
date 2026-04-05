@@ -12,9 +12,9 @@
     "start":       "electron .",
     "open-app":    "node scripts/open-local-app.js",
     "postinstall": "node scripts/patch-electron.js",
-    "dist":        "electron-builder --mac --x64 --arm64",
-    "dist:arm":    "electron-builder --mac --arm64",
-    "dist:x64":    "electron-builder --mac --x64",
+    "dist":        "electron-builder --mac --x64 --arm64 --publish never",
+    "dist:arm":    "electron-builder --mac --arm64 --publish never",
+    "dist:x64":    "electron-builder --mac --x64 --publish never",
     "release":     "electron-builder --mac --x64 --arm64 --publish always"
   },
   "keywords": [],
@@ -22,6 +22,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@electron/notarize": "^3.1.0",
     "electron": "^38.1.0",
     "electron-builder": "^25.1.8",
     "electron-packager": "^17.1.2"
@@ -43,6 +44,10 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.inherit.plist",
       "target": [
         { "target": "dmg", "arch": ["arm64"] },
         { "target": "dmg", "arch": ["x64"] },
@@ -57,6 +62,7 @@
     "publish": {
       "provider": "github",
       "releaseType": "release"
-    }
+    },
+    "afterSign": "scripts/notarize.js"
   }
 }

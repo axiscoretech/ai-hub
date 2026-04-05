@@ -1,36 +1,47 @@
 ---
-description: Инструкция по выпуску нового релиза AI Hub
+description: Release checklist for versioning, Homebrew, and macOS signed builds
 alwaysApply: true
 ---
 
-# Как выпустить новый релиз
+# Release Checklist
 
-## 1. Подними версию в package.json
+## 1. Bump the version
 
-Открой `package.json` и измени поле `"version"`:
+Update `package.json`:
+
 ```json
 "version": "1.1.0"
 ```
 
-## 2. Закоммить и запушить тег
+## 2. Commit and push
 
 ```bash
 git add package.json
 git commit -m "chore: bump version to 1.1.0"
-git tag v1.1.0
 git push origin master
+```
+
+## 3. Create the release tag
+
+```bash
+git tag v1.1.0
 git push origin v1.1.0
 ```
 
-GitHub Actions автоматически соберёт `AI-Hub-1.1.0-arm64.dmg` и `AI-Hub-1.1.0.dmg` и создаст релиз.
+The GitHub Actions release workflow will build and publish:
+- `AI-Hub-1.1.0-arm64.dmg`
+- `AI-Hub-1.1.0.dmg`
 
-## 3. Дождись окончания сборки (~5 мин)
+If Apple signing secrets are configured, the release will also be signed and notarized automatically.
+
+## 4. Watch the release workflow
 
 ```bash
 gh run list --repo axiscoretech/ai-hub
+gh run view --repo axiscoretech/ai-hub --log-failed
 ```
 
-## 4. Скачай DMG и получи SHA256
+## 5. Download release assets and update Homebrew checksums
 
 ```bash
 mkdir -p /tmp/release && gh release download v1.1.0 \
@@ -42,22 +53,39 @@ shasum -a 256 /tmp/release/AI-Hub-1.1.0-arm64.dmg
 shasum -a 256 /tmp/release/AI-Hub-1.1.0.dmg
 ```
 
-## 5. Обнови Homebrew cask
+Update `homebrew/ai-hub.rb` with:
+- the new `version`
+- the new `sha256` values
 
-Открой `homebrew/ai-hub.rb` и замени:
-- `version` на новую версию
-- оба `sha256` на хэши из шага 4
-
-Затем запушь в оба репо:
+Push it to both repositories:
 
 ```bash
-# в основном репо
 git add homebrew/ai-hub.rb
 git commit -m "chore: update cask to v1.1.0"
 git push origin master
 
-# в homebrew-tap
-cd /tmp && git clone https://github.com/axiscoretech/homebrew-tap.git
-cp homebrew/ai-hub.rb /tmp/homebrew-tap/Casks/ai-hub.rb
-cd /tmp/homebrew-tap && git add . && git commit -m "feat: AI Hub v1.1.0" && git push
+cd /tmp && rm -rf homebrew-tap
+git clone https://github.com/axiscoretech/homebrew-tap.git
+cp /Users/admin/Projects/ai-hub/homebrew/ai-hub.rb /tmp/homebrew-tap/Casks/ai-hub.rb
+cd /tmp/homebrew-tap
+git add Casks/ai-hub.rb
+git commit -m "feat: AI Hub v1.1.0"
+git push
 ```
+
+## 6. Verify signed releases when Apple secrets are enabled
+
+```bash
+spctl --assess --type open --context context:primary-signature -v "/Applications/AI Hub.app"
+codesign --verify --deep --strict --verbose=2 "/Applications/AI Hub.app"
+xcrun stapler validate "/Applications/AI Hub.app"
+```
+
+## Required Apple secrets
+
+- `APPLE_SIGNING_CERTIFICATE_P12_BASE64`
+- `APPLE_SIGNING_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`

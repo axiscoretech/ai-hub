@@ -3,14 +3,14 @@ name: Release
 on:
   push:
     tags:
-      - "v*"          # срабатывает на git push tag v1.0.0, v1.2.3 и т.д.
+      - "v*"
 
 jobs:
   build:
-    runs-on: macos-latest   # Apple Silicon runner (macos-14+)
+    runs-on: macos-latest
 
     permissions:
-      contents: write       # нужно для создания GitHub Release
+      contents: write
 
     steps:
       - name: Checkout
@@ -25,7 +25,64 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build & publish DMG (ARM64 + x64)
+      - name: Detect signing secrets
+        id: signing
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_SIGNING_CERTIFICATE_P12_BASE64" ] && \
+             [ -n "$APPLE_SIGNING_CERTIFICATE_PASSWORD" ] && \
+             [ -n "$APPLE_SIGNING_IDENTITY" ] && \
+             [ -n "$APPLE_ID" ] && \
+             [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && \
+             [ -n "$APPLE_TEAM_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Signing and notarization are enabled for this release."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Apple signing secrets are missing. Building an unsigned release."
+          fi
+
+      - name: Import Apple signing certificate
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/apple-signing-cert.p12"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$APPLE_SIGNING_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security find-identity -v "$KEYCHAIN_PATH"
+
+          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Build and publish release
         run: npm run release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # токен создаётся автоматически
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Cleanup signing keychain
+        if: always() && steps.signing.outputs.enabled == 'true'
+        run: |
+          if [ -n "$CSC_KEYCHAIN" ]; then
+            security delete-keychain "$CSC_KEYCHAIN" || true
+          fi
