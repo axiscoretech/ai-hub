@@ -17,15 +17,31 @@ if (fs.existsSync(pathTxt)) {
   fs.writeFileSync(pathTxt, current); // no trailing newline
 }
 
-// 2. Patch CFBundleName + CFBundleDisplayName → "AI Hub"
+// 2. Patch CFBundleName + CFBundleDisplayName + CFBundleExecutable → "AI Hub"
 if (fs.existsSync(plist)) {
   try {
     execSync(`/usr/libexec/PlistBuddy -c "Set :CFBundleName 'AI Hub'" "${plist}"`);
     execSync(`/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'AI Hub'" "${plist}"`);
-    console.log("✓ Patched Info.plist (CFBundleName, CFBundleDisplayName → AI Hub)");
+    execSync(`/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier 'com.aihub.desktop'" "${plist}"`);
+    execSync(`/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable 'AI Hub'" "${plist}"`);
+    console.log("✓ Patched Info.plist");
   } catch (e) {
     console.warn("⚠ Could not patch Info.plist:", e.message);
   }
-} else {
-  console.warn("⚠ Electron.app not found at", appDir);
+}
+
+// 3. Copy Electron binary as "AI Hub" (dock uses process/executable name as fallback)
+const macosDir = path.join(appDir, "Contents", "MacOS");
+const origBin  = path.join(macosDir, "Electron");
+const newBin   = path.join(macosDir, "AI Hub");
+if (fs.existsSync(origBin) && !fs.existsSync(newBin)) {
+  fs.copyFileSync(origBin, newBin);
+  fs.chmodSync(newBin, 0o755);
+  console.log("✓ Copied binary as 'AI Hub'");
+}
+
+// 4. Update path.txt to point at the renamed binary
+if (fs.existsSync(newBin)) {
+  fs.writeFileSync(pathTxt, "Electron.app/Contents/MacOS/AI Hub");
+  console.log("✓ Updated path.txt → AI Hub binary");
 }

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start":       "electron .",
+    "open-app":    "node scripts/open-local-app.js",
     "postinstall": "node scripts/patch-electron.js",
     "dist":        "electron-builder --mac --x64 --arm64",
     "dist:arm":    "electron-builder --mac --arm64",
