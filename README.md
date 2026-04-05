@@ -16,16 +16,33 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
+## Quick Start
+
+1. Download the latest release from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
+2. Open the `.dmg`
+3. Drag **AI Hub.app** into `/Applications`
+4. Launch the app
+
+If macOS says the app is damaged, run:
+
+```bash
+xattr -cr /Applications/AI\ Hub.app
+```
+
+Then launch it again.
+
+---
+
 ## Install
 
-### Direct install _(recommended for now)_
+### Direct Download _(recommended for now)_
 
-Go to [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and pick the right file for your Mac:
+Download the right file for your Mac from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest):
 
 | Mac | File |
 |-----|------|
 | Apple Silicon (M1 / M2 / M3 / M4) | `AI-Hub-x.x.x-arm64.dmg` |
-| Intel | `AI-Hub-x.x.x.dmg` |
+| Intel Mac | `AI-Hub-x.x.x.dmg` |
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
@@ -48,10 +65,10 @@ Direct DMG install is currently the safest option while signed notarized release
 
 ## Features
 
-- **Live tabs** — each service runs in its own isolated browser view, no reloads on switch
-- **Persistent sessions** — stay logged in across restarts, each service has its own cookies
-- **Native macOS feel** — hidden title bar, traffic light buttons, window drag
-- **Lightweight** — no Electron bloat in your way, just a thin shell around the web apps
+- **One app for many AI tools** — keep ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, Mistral, and HuggingChat together
+- **Live tabs** — switch between services without reloading the page
+- **Persistent sessions** — stay logged in between launches
+- **Native macOS feel** — clean window chrome, traffic light controls, drag-friendly title area
 
 ---
 
@@ -84,6 +101,8 @@ npm start
 Requires [Node.js](https://nodejs.org) 18+ and [npm](https://npmjs.com).
 
 ---
+
+## For Developers
 
 ## Build
 
