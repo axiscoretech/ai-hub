@@ -1,0 +1,63 @@
+---
+description: Инструкция по выпуску нового релиза AI Hub
+alwaysApply: true
+---
+
+# Как выпустить новый релиз
+
+## 1. Подними версию в package.json
+
+Открой `package.json` и измени поле `"version"`:
+```json
+"version": "1.1.0"
+```
+
+## 2. Закоммить и запушить тег
+
+```bash
+git add package.json
+git commit -m "chore: bump version to 1.1.0"
+git tag v1.1.0
+git push origin master
+git push origin v1.1.0
+```
+
+GitHub Actions автоматически соберёт `AI-Hub-1.1.0-arm64.dmg` и `AI-Hub-1.1.0.dmg` и создаст релиз.
+
+## 3. Дождись окончания сборки (~5 мин)
+
+```bash
+gh run list --repo axiscoretech/ai-hub
+```
+
+## 4. Скачай DMG и получи SHA256
+
+```bash
+mkdir -p /tmp/release && gh release download v1.1.0 \
+  --repo axiscoretech/ai-hub \
+  --pattern "*.dmg" \
+  --dir /tmp/release
+
+shasum -a 256 /tmp/release/AI-Hub-1.1.0-arm64.dmg
+shasum -a 256 /tmp/release/AI-Hub-1.1.0.dmg
+```
+
+## 5. Обнови Homebrew cask
+
+Открой `homebrew/ai-hub.rb` и замени:
+- `version` на новую версию
+- оба `sha256` на хэши из шага 4
+
+Затем запушь в оба репо:
+
+```bash
+# в основном репо
+git add homebrew/ai-hub.rb
+git commit -m "chore: update cask to v1.1.0"
+git push origin master
+
+# в homebrew-tap
+cd /tmp && git clone https://github.com/axiscoretech/homebrew-tap.git
+cp homebrew/ai-hub.rb /tmp/homebrew-tap/Casks/ai-hub.rb
+cd /tmp/homebrew-tap && git add . && git commit -m "feat: AI Hub v1.1.0" && git push
+```
