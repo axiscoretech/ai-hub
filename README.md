@@ -18,14 +18,7 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ## Install
 
-### Homebrew _(recommended)_
-
-```bash
-brew tap axiscoretech/tap
-brew install --cask ai-hub
-```
-
-### Download DMG
+### Direct install _(recommended for now)_
 
 Go to [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and pick the right file for your Mac:
 
@@ -36,11 +29,20 @@ Go to [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
-> **"App is damaged" warning?**
-> macOS Gatekeeper blocks unsigned apps. Run this once in Terminal and relaunch:
-> ```bash
-> xattr -cr /Applications/AI\ Hub.app
-> ```
+If macOS reports that the app is damaged, clear the quarantine flag once and relaunch:
+
+```bash
+xattr -cr /Applications/AI\ Hub.app
+```
+
+### Homebrew
+
+```bash
+brew tap axiscoretech/tap
+brew install --cask ai-hub
+```
+
+Direct DMG install is currently the safest option while signed notarized releases are still being finalized.
 
 ---
 
@@ -90,6 +92,11 @@ npm run dist        # ARM64 + x64 DMG → dist/
 npm run dist:arm    # Apple Silicon only
 npm run dist:x64    # Intel only
 ```
+
+## Maintainers
+
+Apple code signing and notarization setup lives in [`docs/signing.md`](docs/signing.md).
+Once Apple Developer access is available, add the required GitHub Actions secrets and future releases will be signed automatically.
 
 ---
 
