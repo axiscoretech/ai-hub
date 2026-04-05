@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Patches the Electron dev bundle to show "AI Hub" instead of "Electron"
-// in macOS menu bar and dock. Runs automatically after `npm install`.
+// Deprecated helper for local experiments only.
+// Do not use this for packaged or signed builds: mutating Electron.app after
+// install breaks codesigning and notarization.
 
 const { execSync } = require("child_process");
 const path = require("path");
