@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"          # срабатывает на git push tag v1.0.0, v1.2.3 и т.д.
+
+jobs:
+  build:
+    runs-on: macos-latest   # Apple Silicon runner (macos-14+)
+
+    permissions:
+      contents: write       # нужно для создания GitHub Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & publish DMG (ARM64 + x64)
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # токен создаётся автоматически

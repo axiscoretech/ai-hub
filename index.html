@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Hub</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #1e1e1e;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      input, select {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      /* ── Toolbar ──────────────────────────────────────────────── */
+
+      #toolbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 60px;
+        background: #1e1e1e;
+        border-bottom: 1px solid #333;
+        -webkit-app-region: drag;
+      }
+
+      /* ── Progress bar ─────────────────────────────────────────── */
+
+      #progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        width: 0%;
+        opacity: 0;
+        background: linear-gradient(90deg, #7c6aff, #b0a6ff);
+        pointer-events: none;
+        z-index: 10;
+        transition: width 0.35s ease, opacity 0.25s;
+      }
+
+      @keyframes pulse-bar {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      /* ── Tab bar ──────────────────────────────────────────────── */
+
+      #tabs {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding-left: 76px;
+        gap: 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        min-width: 0;
+      }
+      #tabs::-webkit-scrollbar { display: none; }
+
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #aaa;
+        font-size: 13px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: background 0.15s, color 0.15s;
+        -webkit-app-region: no-drag;
+      }
+      .tab:hover { background: #2e2e2e; color: #fff; }
+      .tab.active {
+        background: #3a3a3a;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: inset 0 -2px 0 #7c6aff;
+      }
+
+      /* Spinner inside tab (background loading indicator) */
+      .spinner {
+        width: 7px;
+        height: 7px;
+        border: 1.5px solid rgba(255,255,255,0.08);
+        border-top-color: #7c6aff;
+        border-radius: 50%;
+        animation: spin 0.65s linear infinite;
+        display: none;
+        flex-shrink: 0;
+      }
+      .tab.loading .spinner { display: block; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── VPN button ───────────────────────────────────────────── */
+
+      #vpn-area {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        padding: 0 10px 0 6px;
+        -webkit-app-region: no-drag;
+      }
+
+      #vpn-btn {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 11px;
+        border-radius: 8px;
+        border: 1px solid #363636;
+        background: transparent;
+        color: #666;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      #vpn-btn:hover { background: #2a2a2a; color: #bbb; border-color: #4a4a4a; }
+      #vpn-btn.proxy-on {
+        background: rgba(124,106,255,0.1);
+        border-color: rgba(124,106,255,0.45);
+        color: #a99fff;
+      }
+
+      /* ── Overlay ──────────────────────────────────────────────── */
+
+      #vpn-overlay {
+        position: fixed;
+        inset: 0;
+        top: 60px;
+        z-index: 99;
+        display: none;
+      }
+
+      /* ── VPN / Proxy Panel ────────────────────────────────────── */
+
+      #vpn-panel {
+        position: fixed;
+        top: 60px;
+        right: 8px;
+        width: 300px;
+        background: #222;
+        border: 1px solid #353535;
+        border-radius: 10px;
+        padding: 14px 16px 16px;
+        z-index: 100;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+        display: none;
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+      }
+      #vpn-panel.open { display: block; }
+      #vpn-panel::-webkit-scrollbar { width: 3px; }
+      #vpn-panel::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 2px; }
+
+      /* Status */
+      .p-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #2c2c2c;
+      }
+      .p-dot {
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: #3a3a3a;
+        transition: all 0.3s;
+        flex-shrink: 0;
+      }
+      .p-dot.on { background: #52c77d; box-shadow: 0 0 5px rgba(82,199,125,0.5); }
+      #p-status-text { font-size: 12px; color: #4a4a4a; flex: 1; transition: color 0.3s; }
+      #p-status-text.on { color: #6ec98c; }
+
+      /* Modes */
+      .p-modes { display: flex; gap: 6px; margin-bottom: 10px; }
+      .p-mode {
+        flex: 1; padding: 6px 0;
+        border-radius: 6px; border: 1px solid #2c2c2c;
+        background: transparent; color: #505050;
+        font-size: 12px; font-family: inherit;
+        cursor: pointer; transition: all 0.12s; text-align: center;
+      }
+      .p-mode:hover { background: #272727; color: #999; }
+      .p-mode.sel { background: #262626; border-color: rgba(124,106,255,0.5); color: #b0a6ff; }
+
+      /* Proxy inputs */
+      .p-inputs { display: none; align-items: center; gap: 5px; margin-bottom: 8px; }
+      .p-inputs.on { display: flex; }
+      #p-type {
+        flex-shrink: 0; background: #191919; border: 1px solid #2c2c2c;
+        color: #999; padding: 6px 4px; border-radius: 6px; font-size: 11px; cursor: pointer;
+      }
+      #p-host {
+        flex: 1; min-width: 0; background: #191919; border: 1px solid #2c2c2c;
+        color: #ccc; padding: 6px 8px; border-radius: 6px; font-size: 12px;
+      }
+      .p-sep { color: #333; font-size: 14px; flex-shrink: 0; }
+      #p-port {
+        width: 50px; flex-shrink: 0; background: #191919; border: 1px solid #2c2c2c;
+        color: #ccc; padding: 6px 6px; border-radius: 6px; font-size: 12px; text-align: center;
+      }
+      #p-type:focus, #p-host:focus, #p-port:focus {
+        outline: none; border-color: rgba(124,106,255,0.55);
+      }
+
+      .p-tip { display: none; font-size: 11px; color: #3d3d3d; margin-bottom: 10px; }
+      .p-tip.on { display: block; }
+
+      #p-apply {
+        width: 100%; padding: 8px; border-radius: 7px; border: none;
+        background: #6a59e0; color: #fff; font-size: 13px; font-family: inherit;
+        font-weight: 500; cursor: pointer; transition: background 0.15s; margin-bottom: 14px;
+      }
+      #p-apply:hover { background: #7c6aff; }
+      #p-apply:disabled { opacity: 0.45; cursor: default; }
+
+      /* Divider */
+      .p-divider { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      .p-divider::before, .p-divider::after { content: ''; flex: 1; height: 1px; background: #282828; }
+      .p-divider span { font-size: 10px; color: #3a3a3a; white-space: nowrap; }
+
+      /* Load extension */
+      #p-load-ext {
+        width: 100%; padding: 7px 10px; border-radius: 7px;
+        border: 1px solid #2c2c2c; background: #1c1c1c; color: #666;
+        font-size: 12px; font-family: inherit; cursor: pointer;
+        transition: all 0.12s; margin-bottom: 10px; text-align: center;
+      }
+      #p-load-ext:hover { background: #242424; color: #bbb; border-color: #404040; }
+      #p-load-ext:disabled { opacity: 0.4; cursor: default; }
+
+      /* Extension list */
+      .p-ext-head {
+        font-size: 10px; color: #393939;
+        text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px;
+      }
+      .p-ext-item {
+        display: flex; align-items: center; gap: 5px;
+        padding: 6px 4px; border-radius: 6px; transition: background 0.1s;
+      }
+      .p-ext-item:hover { background: #272727; }
+      .p-ext-name { font-size: 12px; color: #888; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .p-ext-badge {
+        font-size: 10px; color: #444; background: #1a1a1a;
+        padding: 2px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0;
+      }
+      .p-ext-item:hover .p-ext-name { color: #ddd; }
+
+      /* Install button */
+      .p-ext-install {
+        font-size: 10px; padding: 3px 7px;
+        border-radius: 4px; border: 1px solid rgba(124,106,255,0.35);
+        background: rgba(124,106,255,0.08); color: #8a81e0;
+        cursor: pointer; font-family: inherit; transition: all 0.12s;
+        white-space: nowrap; flex-shrink: 0;
+      }
+      .p-ext-install:hover { background: rgba(124,106,255,0.18); color: #c0bbff; }
+      .p-ext-install:disabled { opacity: 0.35; cursor: default; }
+      .p-ext-install.done {
+        border-color: rgba(82,199,125,0.35); background: rgba(82,199,125,0.08); color: #6ec98c;
+      }
+      .p-ext-link {
+        font-size: 11px; color: #363636; cursor: pointer; flex-shrink: 0;
+        padding: 3px 4px; border-radius: 3px; transition: color 0.1s;
+      }
+      .p-ext-item:hover .p-ext-link { color: #7c6aff; }
+
+      /* Message */
+      #p-msg {
+        margin-top: 10px; font-size: 11px; text-align: center;
+        padding: 5px 8px; border-radius: 5px; display: none;
+      }
+      #p-msg.ok { display: block; color: #6ec98c; background: rgba(82,199,125,0.08); }
+      #p-msg.err { display: block; color: #e07070; background: rgba(220,70,70,0.08); }
+    </style>
+  </head>
+  <body>
+
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <div id="progress-bar"></div>
+
+      <div id="tabs">
+        <div class="tab" data-name="ChatGPT"     onclick="switchTab('ChatGPT')">🤖 ChatGPT<span class="spinner"></span></div>
+        <div class="tab" data-name="Claude"      onclick="switchTab('Claude')">✨ Claude<span class="spinner"></span></div>
+        <div class="tab" data-name="Gemini"      onclick="switchTab('Gemini')">🌌 Gemini<span class="spinner"></span></div>
+        <div class="tab" data-name="DeepSeek"    onclick="switchTab('DeepSeek')">🧠 DeepSeek<span class="spinner"></span></div>
+        <div class="tab" data-name="Qwen"        onclick="switchTab('Qwen')">🐉 Qwen<span class="spinner"></span></div>
+        <div class="tab" data-name="Perplexity"  onclick="switchTab('Perplexity')">🔎 Perplexity<span class="spinner"></span></div>
+        <div class="tab" data-name="Mistral"     onclick="switchTab('Mistral')">🌬️ Mistral<span class="spinner"></span></div>
+        <div class="tab" data-name="Kimi"        onclick="switchTab('Kimi')">🌙 Kimi<span class="spinner"></span></div>
+        <div class="tab" data-name="Grok"        onclick="switchTab('Grok')">⚡ Grok<span class="spinner"></span></div>
+      </div>
+
+      <div id="vpn-area">
+        <button id="vpn-btn" onclick="toggleVpnPanel()">🛡️ Proxy</button>
+      </div>
+    </div>
+
+    <!-- Backdrop -->
+    <div id="vpn-overlay" onclick="closeVpnPanel()"></div>
+
+    <!-- VPN / Proxy panel -->
+    <div id="vpn-panel">
+
+      <div class="p-status">
+        <div class="p-dot" id="p-dot"></div>
+        <span id="p-status-text">Direct connection</span>
+      </div>
+
+      <div class="p-modes">
+        <button class="p-mode sel" id="m-direct" onclick="selectMode('direct')">⊘ Direct</button>
+        <button class="p-mode"     id="m-manual" onclick="selectMode('manual')">⚙ Manual</button>
+      </div>
+
+      <div class="p-inputs" id="p-inputs">
+        <select id="p-type">
+          <option value="socks5">SOCKS5</option>
+          <option value="socks4">SOCKS4</option>
+          <option value="http">HTTP</option>
+          <option value="https">HTTPS</option>
+        </select>
+        <input id="p-host" type="text" placeholder="127.0.0.1">
+        <span class="p-sep">:</span>
+        <input id="p-port" type="text" placeholder="1080" maxlength="5">
+      </div>
+
+      <div class="p-tip" id="p-tip">💡 Tor Browser: 127.0.0.1:9050</div>
+
+      <button id="p-apply" onclick="applyProxy()">Apply</button>
+
+      <div class="p-divider"><span>or use a browser extension</span></div>
+
+      <button id="p-load-ext" onclick="pickExtension()">📁 Load unpacked extension</button>
+
+      <div class="p-ext-head">Free VPN extensions — auto-install</div>
+      <div id="ext-list">
+        <div class="p-ext-item" id="ext-windscribe">
+          <span class="p-ext-name">Windscribe</span>
+          <span class="p-ext-badge">10 GB/mo</span>
+          <button class="p-ext-install" onclick="installExt('hnmpcagpplmpfojmgmnngilcnanddlhb', 'ext-windscribe', this)">Install</button>
+          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/windscribe-free-vpn-and-a/hnmpcagpplmpfojmgmnngilcnanddlhb')">↗</span>
+        </div>
+        <div class="p-ext-item" id="ext-browsec">
+          <span class="p-ext-name">Browsec VPN</span>
+          <span class="p-ext-badge">Free</span>
+          <button class="p-ext-install" onclick="installExt('omghfjlpggmjjaagoclmmobgdodcjboh', 'ext-browsec', this)">Install</button>
+          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/browsec-vpn-free-vpn-for/omghfjlpggmjjaagoclmmobgdodcjboh')">↗</span>
+        </div>
+        <div class="p-ext-item" id="ext-hotspot">
+          <span class="p-ext-name">Hotspot Shield</span>
+          <span class="p-ext-badge">Free tier</span>
+          <button class="p-ext-install" onclick="installExt('nlbejmccbhkncgokjcmghpfloaajcffj', 'ext-hotspot', this)">Install</button>
+          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/hotspot-shield-free-vpn-p/nlbejmccbhkncgokjcmghpfloaajcffj')">↗</span>
+        </div>
+        <div class="p-ext-item" id="ext-switchy">
+          <span class="p-ext-name">Proxy SwitchyOmega</span>
+          <span class="p-ext-badge">Open source</span>
+          <button class="p-ext-install" onclick="installExt('padekgcemlokbadohgkifijomclgjgif', 'ext-switchy', this)">Install</button>
+          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif')">↗</span>
+        </div>
+      </div>
+
+      <div id="p-msg"></div>
+    </div>
+
+    <script>
+      /* ─────────────────────────────────────────────────────────── */
+      /* Tab state                                                    */
+      /* ─────────────────────────────────────────────────────────── */
+
+      let activeTabName = null;
+      const tabLoadState = {}; // name → 'start' | 'dom' | 'finish' | 'fail'
+
+      function setActive(name) {
+        document.querySelectorAll('.tab').forEach(el => {
+          el.classList.toggle('active', el.dataset.name === name);
+        });
+      }
+
+      function switchTab(name) {
+        activeTabName = name;
+        setActive(name);
+        window.electronAPI.switchTab(name);
+
+        // Sync progress bar to this tab's current state
+        const state = tabLoadState[name];
+        if (state === 'start') { resetProgress(); startProgress(); }
+        else if (state === 'dom') { resetProgress(); startProgress(); domProgress(); }
+        else hideProgress();
+      }
+
+      window.electronAPI.onTabActive(name => {
+        activeTabName = name;
+        setActive(name);
+      });
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Progress bar                                                 */
+      /* ─────────────────────────────────────────────────────────── */
+
+      let progressPct = 0;
+      let progressCrawlTimer = null;
+      let progressHungTimer  = null;
+
+      const bar = () => document.getElementById('progress-bar');
+
+      function setProgressWidth(pct) {
+        progressPct = pct;
+        bar().style.width = pct + '%';
+      }
+
+      function resetProgress() {
+        clearInterval(progressCrawlTimer);
+        clearTimeout(progressHungTimer);
+        const b = bar();
+        b.style.transition = 'none';
+        b.style.animation  = '';
+        b.style.opacity    = '0';
+        b.style.background = 'linear-gradient(90deg, #7c6aff, #b0a6ff)';
+        setProgressWidth(0);
+      }
+
+      function startProgress() {
+        const b = bar();
+        b.style.opacity = '1';
+
+        // Quick jump to 15%
+        requestAnimationFrame(() => {
+          b.style.transition = 'width 0.2s ease';
+          setProgressWidth(15);
+
+          // Crawl slowly toward 75%
+          progressCrawlTimer = setInterval(() => {
+            if (progressPct < 75) {
+              setProgressWidth(progressPct + (75 - progressPct) * 0.055);
+            }
+          }, 350);
+        });
+
+        // Hung detection: >10s still loading → turn orange + pulse
+        progressHungTimer = setTimeout(() => {
+          b.style.background = 'linear-gradient(90deg, #e09a3a, #f0bc6a)';
+          b.style.animation  = 'pulse-bar 1.4s ease-in-out infinite';
+        }, 10000);
+      }
+
+      function domProgress() {
+        clearInterval(progressCrawlTimer);
+        const b = bar();
+        b.style.transition = 'width 0.45s ease';
+        if (progressPct < 72) setProgressWidth(72);
+      }
+
+      function finishProgress(failed) {
+        clearInterval(progressCrawlTimer);
+        clearTimeout(progressHungTimer);
+        const b = bar();
+        b.style.animation  = '';
+        if (failed) b.style.background = 'rgba(210,70,70,0.75)';
+        b.style.transition = 'width 0.12s ease';
+        setProgressWidth(100);
+        setTimeout(() => {
+          b.style.transition = 'opacity 0.28s';
+          b.style.opacity    = '0';
+          setTimeout(() => resetProgress(), 300);
+        }, 180);
+      }
+
+      function hideProgress() {
+        clearInterval(progressCrawlTimer);
+        clearTimeout(progressHungTimer);
+        const b = bar();
+        b.style.animation  = '';
+        b.style.transition = 'opacity 0.15s';
+        b.style.opacity    = '0';
+        setTimeout(() => resetProgress(), 200);
+      }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Tab progress events from main process                        */
+      /* ─────────────────────────────────────────────────────────── */
+
+      window.electronAPI.onTabProgress((name, event) => {
+        tabLoadState[name] = event;
+
+        // Spinner on the tab itself (for background tabs)
+        const tabEl = document.querySelector(`.tab[data-name="${name}"]`);
+        if (tabEl) tabEl.classList.toggle('loading', event === 'start' || event === 'dom');
+
+        // Progress bar only for the active tab
+        if (name !== activeTabName) return;
+        if      (event === 'start')  { resetProgress(); startProgress(); }
+        else if (event === 'dom')    { domProgress(); }
+        else if (event === 'finish') { finishProgress(false); }
+        else if (event === 'fail')   { finishProgress(true); }
+      });
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* VPN Panel                                                    */
+      /* ─────────────────────────────────────────────────────────── */
+
+      let panelOpen = false;
+      let proxyMode = 'direct';
+
+      function pushBrowserView() {
+        const h = document.getElementById('vpn-panel').offsetHeight;
+        window.electronAPI.setTopBarHeight(60 + h + 6);
+      }
+
+      function openVpnPanel() {
+        panelOpen = true;
+        document.getElementById('vpn-panel').classList.add('open');
+        document.getElementById('vpn-overlay').style.display = 'block';
+        requestAnimationFrame(pushBrowserView);
+      }
+
+      function closeVpnPanel() {
+        panelOpen = false;
+        document.getElementById('vpn-panel').classList.remove('open');
+        document.getElementById('vpn-overlay').style.display = 'none';
+        window.electronAPI.setTopBarHeight(60);
+      }
+
+      function toggleVpnPanel() { panelOpen ? closeVpnPanel() : openVpnPanel(); }
+
+      function selectMode(mode) {
+        proxyMode = mode;
+        document.getElementById('m-direct').classList.toggle('sel', mode === 'direct');
+        document.getElementById('m-manual').classList.toggle('sel', mode === 'manual');
+        document.getElementById('p-inputs').classList.toggle('on', mode === 'manual');
+        document.getElementById('p-tip').classList.toggle('on', mode === 'manual');
+        if (panelOpen) requestAnimationFrame(pushBrowserView);
+      }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Proxy apply                                                  */
+      /* ─────────────────────────────────────────────────────────── */
+
+      async function applyProxy() {
+        clearMsg();
+        const btn = document.getElementById('p-apply');
+        btn.textContent = 'Applying…';
+        btn.disabled = true;
+        try {
+          if (proxyMode === 'direct') {
+            await window.electronAPI.clearProxy();
+            setProxyStatus(false, 'Direct connection');
+            showMsg('Proxy disabled', 'ok');
+          } else {
+            const type = document.getElementById('p-type').value;
+            const host = document.getElementById('p-host').value.trim();
+            const port = document.getElementById('p-port').value.trim();
+            if (!host || !port) { showMsg('Enter host and port', 'err'); return; }
+            await window.electronAPI.setProxy({ proxyRules: `${type}://${host}:${port}` });
+            setProxyStatus(true, `${type.toUpperCase()} ${host}:${port}`);
+            showMsg('Applied to all tabs ✓', 'ok');
+          }
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        } finally {
+          btn.textContent = 'Apply';
+          btn.disabled = false;
+          if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }
+      }
+
+      function setProxyStatus(active, label) {
+        document.getElementById('p-dot').classList.toggle('on', active);
+        const t = document.getElementById('p-status-text');
+        t.classList.toggle('on', active);
+        t.textContent = label;
+        document.getElementById('vpn-btn').classList.toggle('proxy-on', active);
+      }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Extension: manual load                                       */
+      /* ─────────────────────────────────────────────────────────── */
+
+      async function pickExtension() {
+        clearMsg();
+        const btn = document.getElementById('p-load-ext');
+        btn.textContent = '📁 Selecting…';
+        btn.disabled = true;
+        try {
+          const res = await window.electronAPI.pickExtension();
+          if (!res || res.canceled) return;
+          if (res.success) {
+            showMsg('Loaded: ' + res.path.split('/').pop() + ' ✓', 'ok');
+          } else {
+            showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
+          }
+        } finally {
+          btn.textContent = '📁 Load unpacked extension';
+          btn.disabled = false;
+          if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }
+      }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Extension: auto-install from Chrome Web Store               */
+      /* ─────────────────────────────────────────────────────────── */
+
+      async function installExt(extensionId, rowId, btnEl) {
+        clearMsg();
+        btnEl.textContent = '⏳';
+        btnEl.disabled = true;
+
+        showMsg('Downloading extension…', 'ok');
+        if (panelOpen) requestAnimationFrame(pushBrowserView);
+
+        try {
+          const res = await window.electronAPI.installExtension(extensionId);
+          if (res.success) {
+            btnEl.textContent = '✓ Done';
+            btnEl.classList.add('done');
+            showMsg('Installed! Configure the extension in the page.', 'ok');
+          } else {
+            btnEl.textContent = 'Install';
+            btnEl.disabled = false;
+            showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
+          }
+        } catch (e) {
+          btnEl.textContent = 'Install';
+          btnEl.disabled = false;
+          showMsg('Error: ' + e.message, 'err');
+        } finally {
+          if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }
+      }
+
+      function openExt(url) { window.electronAPI.openExternal(url); }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* Messages                                                     */
+      /* ─────────────────────────────────────────────────────────── */
+
+      let msgTimer;
+      function showMsg(text, type) {
+        const el = document.getElementById('p-msg');
+        el.textContent = text;
+        el.className = type;
+        clearTimeout(msgTimer);
+        msgTimer = setTimeout(() => {
+          el.className = '';
+          el.textContent = '';
+          if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }, 5000);
+        if (panelOpen) requestAnimationFrame(pushBrowserView);
+      }
+
+      function clearMsg() {
+        const el = document.getElementById('p-msg');
+        el.className = '';
+        el.textContent = '';
+      }
+    </script>
+  </body>
+</html>

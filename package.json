@@ -1,0 +1,61 @@
+{
+  "name": "ai-hub",
+  "version": "1.0.0",
+  "description": "Desktop AI Hub — all your AI services in one place",
+  "main": "main.js",
+  "homepage": "https://github.com/axiscoretech/ai-hub",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/axiscoretech/ai-hub"
+  },
+  "scripts": {
+    "start":       "electron .",
+    "postinstall": "node scripts/patch-electron.js",
+    "dist":        "electron-builder --mac --x64 --arm64",
+    "dist:arm":    "electron-builder --mac --arm64",
+    "dist:x64":    "electron-builder --mac --x64",
+    "release":     "electron-builder --mac --x64 --arm64 --publish always"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^38.1.0",
+    "electron-builder": "^25.1.8",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.aihub.desktop",
+    "productName": "AI Hub",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] },
+        { "target": "dmg", "arch": ["x64"] },
+        { "target": "zip", "arch": ["arm64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "window": { "width": 540, "height": 380 }
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
+  }
+}
