@@ -1,55 +1,76 @@
+<div align="center">
+
+<img src="assets/icon.png" width="120" alt="AI Hub icon" />
+
 # AI Hub
 
-Десктопное приложение для macOS — ChatGPT, Claude, Gemini, DeepSeek, Qwen, Perplexity, Mistral, Kimi, Grok и HuggingChat в одном окне.
+**All your AI assistants in one place.**
+
+ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · HuggingChat
+
+[![Release](https://img.shields.io/github/v/release/axiscoretech/ai-hub?style=flat-square&color=7c6aff)](https://github.com/axiscoretech/ai-hub/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
+[![License](https://img.shields.io/github/license/axiscoretech/ai-hub?style=flat-square)](LICENSE)
+
+</div>
 
 ---
 
-## Установка
+## Install
 
-### Способ 1 — Homebrew
+### Homebrew _(recommended)_
 
 ```bash
 brew tap axiscoretech/tap
 brew install --cask ai-hub
 ```
 
-### Способ 2 — Скачать DMG
+### Download DMG
 
-Перейди на страницу [Releases](https://github.com/axiscoretech/ai-hub/releases/latest) и скачай нужный файл:
+Go to [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and pick the right file for your Mac:
 
-| Твой Mac | Файл для скачивания |
-|---|---|
+| Mac | File |
+|-----|------|
 | Apple Silicon (M1 / M2 / M3 / M4) | `AI-Hub-x.x.x-arm64.dmg` |
 | Intel | `AI-Hub-x.x.x.dmg` |
 
-Открой DMG и перетащи **AI Hub.app** в папку `/Applications`.
+Open the DMG and drag **AI Hub.app** into `/Applications`.
 
-> **Если macOS пишет «приложение повреждено»** — это ограничение Gatekeeper для неподписанных приложений. Запусти в Терминале:
+> **"App is damaged" warning?**
+> macOS Gatekeeper blocks unsigned apps. Run this once in Terminal and relaunch:
 > ```bash
 > xattr -cr /Applications/AI\ Hub.app
 > ```
-> После этого приложение откроется нормально.
 
 ---
 
-## Поддерживаемые сервисы
+## Features
 
-| Сервис | Адрес |
-|---|---|
-| ChatGPT | chat.openai.com |
-| Claude | claude.ai |
-| Gemini | gemini.google.com |
-| DeepSeek | chat.deepseek.com |
-| Qwen | chat.qwenlm.ai |
-| Perplexity | perplexity.ai |
-| Mistral | chat.mistral.ai |
-| Kimi | kimi.com |
-| Grok | grok.com |
-| HuggingChat | huggingface.co/chat |
+- **Live tabs** — each service runs in its own isolated browser view, no reloads on switch
+- **Persistent sessions** — stay logged in across restarts, each service has its own cookies
+- **Native macOS feel** — hidden title bar, traffic light buttons, window drag
+- **Lightweight** — no Electron bloat in your way, just a thin shell around the web apps
 
 ---
 
-## Запуск из исходников
+## Supported services
+
+| | Service | URL |
+|---|---------|-----|
+| 🤖 | ChatGPT | [chat.openai.com](https://chat.openai.com) |
+| ✨ | Claude | [claude.ai](https://claude.ai) |
+| 🌌 | Gemini | [gemini.google.com](https://gemini.google.com) |
+| 🧠 | DeepSeek | [chat.deepseek.com](https://chat.deepseek.com) |
+| ⚡ | Grok | [grok.com](https://grok.com) |
+| 🔎 | Perplexity | [perplexity.ai](https://www.perplexity.ai) |
+| 🌬️ | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
+| 🐉 | Qwen | [chat.qwenlm.ai](https://chat.qwenlm.ai) |
+| 🌙 | Kimi | [kimi.com](https://www.kimi.com) |
+| 🤗 | HuggingChat | [huggingface.co/chat](https://huggingface.co/chat) |
+
+---
+
+## Run from source
 
 ```bash
 git clone https://github.com/axiscoretech/ai-hub
@@ -57,3 +78,23 @@ cd ai-hub
 npm install
 npm start
 ```
+
+Requires [Node.js](https://nodejs.org) 18+ and [npm](https://npmjs.com).
+
+---
+
+## Build
+
+```bash
+npm run dist        # ARM64 + x64 DMG → dist/
+npm run dist:arm    # Apple Silicon only
+npm run dist:x64    # Intel only
+```
+
+---
+
+<div align="center">
+
+Made with ☕ · [axiscoretech](https://github.com/axiscoretech)
+
+</div>
