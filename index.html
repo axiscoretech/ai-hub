@@ -248,15 +248,39 @@
         font-size: 10px; color: #393939;
         text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px;
       }
+      .p-ext-note {
+        font-size: 11px;
+        color: #666;
+        line-height: 1.35;
+        margin-bottom: 10px;
+      }
+      .p-ext-warning {
+        font-size: 11px;
+        color: #d3a55d;
+        line-height: 1.35;
+        margin: -2px 0 10px;
+      }
+      .p-ext-empty {
+        font-size: 11px;
+        color: #555;
+        margin-top: 8px;
+      }
       .p-ext-item {
         display: flex; align-items: center; gap: 5px;
-        padding: 6px 4px; border-radius: 6px; transition: background 0.1s;
+        padding: 7px 4px; border-radius: 6px; transition: background 0.1s;
       }
       .p-ext-item:hover { background: #272727; }
       .p-ext-name { font-size: 12px; color: #888; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .p-ext-badge {
         font-size: 10px; color: #444; background: #1a1a1a;
         padding: 2px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0;
+      }
+      .p-ext-status {
+        font-size: 10px;
+        color: #666;
+        min-width: 68px;
+        text-align: right;
+        white-space: nowrap;
       }
       .p-ext-item:hover .p-ext-name { color: #ddd; }
 
@@ -273,11 +297,42 @@
       .p-ext-install.done {
         border-color: rgba(82,199,125,0.35); background: rgba(82,199,125,0.08); color: #6ec98c;
       }
+      .p-ext-install.remove {
+        border-color: rgba(210,70,70,0.35);
+        background: rgba(210,70,70,0.08);
+        color: #e58a8a;
+      }
+      .p-ext-install.remove:hover {
+        background: rgba(210,70,70,0.18);
+        color: #ffc0c0;
+      }
+      .p-ext-toggle {
+        font-size: 10px; padding: 3px 7px;
+        border-radius: 4px; border: 1px solid #35503f;
+        background: rgba(82,199,125,0.08); color: #6ec98c;
+        cursor: pointer; font-family: inherit; transition: all 0.12s;
+        white-space: nowrap; flex-shrink: 0;
+      }
+      .p-ext-toggle:hover { background: rgba(82,199,125,0.18); }
+      .p-ext-toggle:disabled { opacity: 0.35; cursor: default; }
+      .p-ext-toggle.on {
+        border-color: rgba(224,154,58,0.35);
+        background: rgba(224,154,58,0.08);
+        color: #f0bc6a;
+      }
       .p-ext-link {
         font-size: 11px; color: #363636; cursor: pointer; flex-shrink: 0;
         padding: 3px 4px; border-radius: 3px; transition: color 0.1s;
       }
       .p-ext-item:hover .p-ext-link { color: #7c6aff; }
+      .p-ext-meta {
+        font-size: 10px;
+        color: #4e4e4e;
+        max-width: 110px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
       /* Message */
       #p-msg {
@@ -348,32 +403,53 @@
       <button id="p-load-ext" onclick="pickExtension()">📁 Load unpacked extension</button>
 
       <div class="p-ext-head">Free VPN extensions — auto-install</div>
+      <div class="p-ext-note">
+        `Install` downloads the extension into AI Hub. `Enable` loads it into all tabs.
+        Only one extension can be active at a time.
+      </div>
+      <div class="p-ext-warning">
+        Experimental: Electron can install and load these extensions, but some VPN-specific browser APIs
+        like `proxy` / `privacy` are not fully supported, so the real VPN connection may not work reliably.
+        Manual proxy mode remains the primary supported option.
+      </div>
       <div id="ext-list">
-        <div class="p-ext-item" id="ext-windscribe">
+        <div class="p-ext-item" id="ext-windscribe" data-ext-id="hnmpcagpplmpfojmgmnngilcnanddlhb">
           <span class="p-ext-name">Windscribe</span>
           <span class="p-ext-badge">10 GB/mo</span>
-          <button class="p-ext-install" onclick="installExt('hnmpcagpplmpfojmgmnngilcnanddlhb', 'ext-windscribe', this)">Install</button>
+          <span class="p-ext-status">Not installed</span>
+          <button class="p-ext-install" onclick="installExt('hnmpcagpplmpfojmgmnngilcnanddlhb', this)">Install</button>
+          <button class="p-ext-toggle" onclick="toggleExt('hnmpcagpplmpfojmgmnngilcnanddlhb', this)" disabled>Enable</button>
           <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/windscribe-free-vpn-and-a/hnmpcagpplmpfojmgmnngilcnanddlhb')">↗</span>
         </div>
-        <div class="p-ext-item" id="ext-browsec">
+        <div class="p-ext-item" id="ext-browsec" data-ext-id="omghfjlpggmjjaagoclmmobgdodcjboh">
           <span class="p-ext-name">Browsec VPN</span>
-          <span class="p-ext-badge">Free</span>
-          <button class="p-ext-install" onclick="installExt('omghfjlpggmjjaagoclmmobgdodcjboh', 'ext-browsec', this)">Install</button>
+          <span class="p-ext-badge">Updated 2026</span>
+          <span class="p-ext-status">Not installed</span>
+          <button class="p-ext-install" onclick="installExt('omghfjlpggmjjaagoclmmobgdodcjboh', this)">Install</button>
+          <button class="p-ext-toggle" onclick="toggleExt('omghfjlpggmjjaagoclmmobgdodcjboh', this)" disabled>Enable</button>
           <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/browsec-vpn-free-vpn-for/omghfjlpggmjjaagoclmmobgdodcjboh')">↗</span>
         </div>
-        <div class="p-ext-item" id="ext-hotspot">
-          <span class="p-ext-name">Hotspot Shield</span>
+        <div class="p-ext-item" id="ext-veepn" data-ext-id="majdfhpaihoncoakbjgbdhglocklcgno">
+          <span class="p-ext-name">VeePN</span>
           <span class="p-ext-badge">Free tier</span>
-          <button class="p-ext-install" onclick="installExt('nlbejmccbhkncgokjcmghpfloaajcffj', 'ext-hotspot', this)">Install</button>
-          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/hotspot-shield-free-vpn-p/nlbejmccbhkncgokjcmghpfloaajcffj')">↗</span>
+          <span class="p-ext-status">Not installed</span>
+          <button class="p-ext-install" onclick="installExt('majdfhpaihoncoakbjgbdhglocklcgno', this)">Install</button>
+          <button class="p-ext-toggle" onclick="toggleExt('majdfhpaihoncoakbjgbdhglocklcgno', this)" disabled>Enable</button>
+          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/free-vpn-for-chrome-vpn-p/majdfhpaihoncoakbjgbdhglocklcgno')">↗</span>
         </div>
-        <div class="p-ext-item" id="ext-switchy">
+        <div class="p-ext-item" id="ext-switchy" data-ext-id="padekgcemlokbadohgkifijomclgjgif">
           <span class="p-ext-name">Proxy SwitchyOmega</span>
-          <span class="p-ext-badge">Open source</span>
-          <button class="p-ext-install" onclick="installExt('padekgcemlokbadohgkifijomclgjgif', 'ext-switchy', this)">Install</button>
+          <span class="p-ext-badge">Legacy but alive</span>
+          <span class="p-ext-status">Not installed</span>
+          <button class="p-ext-install" onclick="installExt('padekgcemlokbadohgkifijomclgjgif', this)">Install</button>
+          <button class="p-ext-toggle" onclick="toggleExt('padekgcemlokbadohgkifijomclgjgif', this)" disabled>Enable</button>
           <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif')">↗</span>
         </div>
       </div>
+
+      <div class="p-divider"><span>installed in AI Hub</span></div>
+      <div id="installed-ext-list"></div>
+      <div id="installed-ext-empty" class="p-ext-empty">No custom extensions installed yet.</div>
 
       <div id="p-msg"></div>
     </div>
@@ -516,6 +592,7 @@
 
       let panelOpen = false;
       let proxyMode = 'direct';
+      let extensionRegistry = [];
 
       function pushBrowserView() {
         const h = document.getElementById('vpn-panel').offsetHeight;
@@ -600,7 +677,8 @@
           const res = await window.electronAPI.pickExtension();
           if (!res || res.canceled) return;
           if (res.success) {
-            showMsg('Loaded: ' + res.path.split('/').pop() + ' ✓', 'ok');
+            await refreshExtensions();
+            showMsg('Loaded: ' + (res.name || res.path.split('/').pop()) + ' ✓', 'ok');
           } else {
             showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
           }
@@ -615,7 +693,13 @@
       /* Extension: auto-install from Chrome Web Store               */
       /* ─────────────────────────────────────────────────────────── */
 
-      async function installExt(extensionId, rowId, btnEl) {
+      async function installExt(extensionId, btnEl) {
+        const installedEntry = extensionRegistry.find(ext => ext.storeId === extensionId || ext.id === extensionId);
+        if (installedEntry) {
+          await uninstallExt(extensionId, btnEl);
+          return;
+        }
+
         clearMsg();
         btnEl.textContent = '⏳';
         btnEl.disabled = true;
@@ -626,9 +710,8 @@
         try {
           const res = await window.electronAPI.installExtension(extensionId);
           if (res.success) {
-            btnEl.textContent = '✓ Done';
-            btnEl.classList.add('done');
-            showMsg('Installed! Configure the extension in the page.', 'ok');
+            await refreshExtensions();
+            showMsg('Installed! Use Enable/Disable to load it into AI Hub.', 'ok');
           } else {
             btnEl.textContent = 'Install';
             btnEl.disabled = false;
@@ -641,6 +724,137 @@
         } finally {
           if (panelOpen) requestAnimationFrame(pushBrowserView);
         }
+      }
+
+      async function uninstallExt(extensionId, btnEl) {
+        clearMsg();
+        btnEl.textContent = 'Removing…';
+        btnEl.disabled = true;
+
+        try {
+          const res = await window.electronAPI.uninstallExtension(extensionId);
+          if (res.success) {
+            await refreshExtensions();
+            showMsg('Extension removed from AI Hub', 'ok');
+          } else {
+            showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
+          }
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        }
+      }
+
+      async function toggleExt(extensionId, btnEl) {
+        clearMsg();
+        const currentlyEnabled = extensionRegistry.find(ext => ext.storeId === extensionId || ext.id === extensionId)?.enabled;
+        btnEl.disabled = true;
+        btnEl.textContent = currentlyEnabled ? 'Disabling…' : 'Enabling…';
+
+        try {
+          const res = await window.electronAPI.toggleExtension(extensionId, !currentlyEnabled);
+          if (res.success) {
+            await refreshExtensions();
+            showMsg(currentlyEnabled ? 'Extension disabled' : 'Extension enabled for all tabs', 'ok');
+          } else {
+            showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
+          }
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        }
+      }
+
+      async function refreshExtensions() {
+        extensionRegistry = await window.electronAPI.listExtensions();
+        const byId = new Map();
+        extensionRegistry.forEach(ext => {
+          if (ext.storeId) byId.set(ext.storeId, ext);
+          else if (ext.id) byId.set(ext.id, ext);
+        });
+
+        document.querySelectorAll('.p-ext-item[data-ext-id]').forEach(row => {
+          const id = row.dataset.extId;
+          const entry = byId.get(id);
+          const statusEl = row.querySelector('.p-ext-status');
+          const installBtn = row.querySelector('.p-ext-install');
+          const toggleBtn = row.querySelector('.p-ext-toggle');
+
+          if (!entry) {
+            statusEl.textContent = 'Not installed';
+            installBtn.textContent = 'Install';
+            installBtn.disabled = false;
+            installBtn.classList.remove('done', 'remove');
+            toggleBtn.textContent = 'Enable';
+            toggleBtn.disabled = true;
+            toggleBtn.classList.remove('on');
+            return;
+          }
+
+          statusEl.textContent = entry.enabled ? 'Enabled' : 'Installed';
+          installBtn.textContent = 'Uninstall';
+          installBtn.disabled = false;
+          installBtn.classList.add('done');
+          installBtn.classList.add('remove');
+          toggleBtn.textContent = entry.enabled ? 'Disable' : 'Enable';
+          toggleBtn.disabled = false;
+          toggleBtn.classList.toggle('on', entry.enabled);
+        });
+
+        renderInstalledExtensions();
+      }
+
+      function renderInstalledExtensions() {
+        const container = document.getElementById('installed-ext-list');
+        const empty = document.getElementById('installed-ext-empty');
+        container.innerHTML = '';
+
+        if (!extensionRegistry.length) {
+          empty.style.display = 'block';
+          return;
+        }
+
+        empty.style.display = 'none';
+
+        extensionRegistry.forEach(entry => {
+          const row = document.createElement('div');
+          row.className = 'p-ext-item';
+
+          const name = document.createElement('span');
+          name.className = 'p-ext-name';
+          name.textContent = entry.name || entry.id || 'Extension';
+
+          const badge = document.createElement('span');
+          badge.className = 'p-ext-badge';
+          badge.textContent = entry.source === 'store' ? 'Store' : 'Custom';
+
+          const meta = document.createElement('span');
+          meta.className = 'p-ext-meta';
+          meta.textContent = entry.id || (entry.path ? entry.path.split('/').pop() : 'Unknown');
+
+          const status = document.createElement('span');
+          status.className = 'p-ext-status';
+          status.textContent = entry.enabled ? 'Enabled' : 'Installed';
+
+          const toggle = document.createElement('button');
+          toggle.className = 'p-ext-toggle';
+          toggle.textContent = entry.enabled ? 'Disable' : 'Enable';
+          toggle.classList.toggle('on', entry.enabled);
+          toggle.disabled = !entry.id;
+          const lookupKey = entry.storeId || entry.id || entry.path;
+          toggle.onclick = () => toggleExt(lookupKey, toggle);
+
+          const remove = document.createElement('button');
+          remove.className = 'p-ext-install remove';
+          remove.textContent = 'Uninstall';
+          remove.onclick = () => uninstallExt(lookupKey, remove);
+
+          row.appendChild(name);
+          row.appendChild(badge);
+          row.appendChild(meta);
+          row.appendChild(status);
+          row.appendChild(toggle);
+          row.appendChild(remove);
+          container.appendChild(row);
+        });
       }
 
       function openExt(url) { window.electronAPI.openExternal(url); }
@@ -668,6 +882,8 @@
         el.className = '';
         el.textContent = '';
       }
+
+      refreshExtensions();
     </script>
   </body>
 </html>

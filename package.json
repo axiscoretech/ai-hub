@@ -11,6 +11,7 @@
   "scripts": {
     "start":       "electron .",
     "open-app":    "node scripts/open-local-app.js",
+    "verify:extensions": "electron scripts/verify-extensions.js",
     "dist":        "electron-builder --mac --x64 --arm64 --publish never",
     "dist:arm":    "electron-builder --mac --arm64 --publish never",
     "dist:x64":    "electron-builder --mac --x64 --publish never",

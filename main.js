@@ -30,6 +30,10 @@ function getAllSessions() {
   return Object.keys(tabs).map(name => session.fromPartition(`persist:${name}`));
 }
 
+function getExtensionsApi(targetSession) {
+  return targetSession.extensions ?? targetSession;
+}
+
 async function applyProxyToAll(config) {
   await Promise.all(getAllSessions().map(s => s.setProxy(config)));
 }
@@ -40,23 +44,171 @@ function getRegistryFile() {
   return path.join(app.getPath("userData"), "extensions-registry.json");
 }
 
+function normalizeRegistryEntry(entry) {
+  const inferredStoreId = entry.storeId
+    ?? (entry.source === "store" && entry.path ? path.basename(entry.path) : null);
+
+  if (typeof entry === "string") {
+    return {
+      id: null,
+      storeId: null,
+      name: path.basename(entry),
+      path: entry,
+      enabled: true,
+      source: "manual",
+    };
+  }
+
+  return {
+    id: entry.id ?? null,
+    storeId: inferredStoreId,
+    name: entry.name ?? path.basename(entry.path ?? "Extension"),
+    path: entry.path,
+    enabled: entry.enabled !== false,
+    source: entry.source ?? "manual",
+  };
+}
+
 function loadRegistry() {
-  try { return JSON.parse(fs.readFileSync(getRegistryFile(), "utf8")); }
+  try {
+    return JSON.parse(fs.readFileSync(getRegistryFile(), "utf8"))
+      .map(normalizeRegistryEntry)
+      .filter(entry => entry.path);
+  }
   catch { return []; }
 }
 
-function saveRegistry(paths) {
-  fs.writeFileSync(getRegistryFile(), JSON.stringify(paths, null, 2));
+function saveRegistry(entries) {
+  fs.writeFileSync(getRegistryFile(), JSON.stringify(entries.map(normalizeRegistryEntry), null, 2));
+}
+
+function getManifestName(extPath) {
+  try {
+    const manifestPath = path.join(extPath, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    return manifest.name || path.basename(extPath);
+  } catch {
+    return path.basename(extPath);
+  }
+}
+
+async function loadExtensionIntoAllSessions(extPath) {
+  let loadedExtension = null;
+
+  for (const targetSession of getAllSessions()) {
+    const api = getExtensionsApi(targetSession);
+    const extension = await api.loadExtension(extPath, { allowFileAccess: true });
+    if (!loadedExtension) loadedExtension = extension;
+  }
+
+  return loadedExtension;
+}
+
+async function removeExtensionFromAllSessions(extensionId) {
+  for (const targetSession of getAllSessions()) {
+    const api = getExtensionsApi(targetSession);
+    const loaded = api.getAllExtensions?.().some(extension => extension.id === extensionId);
+    if (loaded) api.removeExtension(extensionId);
+  }
+}
+
+function upsertRegistryEntry(nextEntry) {
+  const registry = loadRegistry();
+  const existingIndex = registry.findIndex(entry =>
+    (nextEntry.storeId && entry.storeId === nextEntry.storeId) ||
+    (nextEntry.id && entry.id === nextEntry.id) ||
+    entry.path === nextEntry.path
+  );
+
+  if (existingIndex >= 0) {
+    registry[existingIndex] = { ...registry[existingIndex], ...nextEntry };
+  } else {
+    registry.push(normalizeRegistryEntry(nextEntry));
+  }
+
+  saveRegistry(registry);
+  return registry;
+}
+
+function findRegistryEntry(registry, lookupId) {
+  return registry.find(entry =>
+    entry.storeId === lookupId ||
+    entry.id === lookupId ||
+    entry.path === lookupId
+  );
+}
+
+async function setExtensionEnabled(extensionLookupId, enabled) {
+  const registry = loadRegistry();
+  const targetEntry = findRegistryEntry(registry, extensionLookupId);
+
+  if (!targetEntry) {
+    throw new Error("Extension not found in registry");
+  }
+
+  if (!fs.existsSync(targetEntry.path)) {
+    throw new Error("Extension files are missing");
+  }
+
+  if (enabled) {
+    // Keep only one active extension at a time to avoid proxy conflicts.
+    for (const entry of registry) {
+      if (entry.id && entry.id !== targetEntry.id && entry.enabled) {
+        await removeExtensionFromAllSessions(entry.id);
+        entry.enabled = false;
+      }
+    }
+
+    const loaded = await loadExtensionIntoAllSessions(targetEntry.path);
+    targetEntry.id = loaded.id || targetEntry.id;
+    targetEntry.name = loaded.name || targetEntry.name;
+    targetEntry.enabled = true;
+  } else {
+    if (targetEntry.id) await removeExtensionFromAllSessions(targetEntry.id);
+    targetEntry.enabled = false;
+  }
+
+  saveRegistry(registry);
+  return registry;
+}
+
+async function uninstallExtension(extensionLookupId) {
+  const registry = loadRegistry();
+  const targetEntry = findRegistryEntry(registry, extensionLookupId);
+
+  if (!targetEntry) {
+    throw new Error("Extension not found in registry");
+  }
+
+  if (targetEntry.id) {
+    await removeExtensionFromAllSessions(targetEntry.id);
+  }
+
+  if (targetEntry.path && fs.existsSync(targetEntry.path)) {
+    fs.rmSync(targetEntry.path, { recursive: true, force: true });
+  }
+
+  const nextRegistry = registry.filter(entry => entry !== targetEntry);
+  saveRegistry(nextRegistry);
+  return nextRegistry;
 }
 
 async function loadPersistedExtensions() {
-  for (const extPath of loadRegistry()) {
-    if (!fs.existsSync(extPath)) continue;
-    for (const s of getAllSessions()) {
-      try { await s.loadExtension(extPath, { allowFileAccess: true }); }
-      catch {} // already loaded or incompatible
+  const registry = loadRegistry();
+
+  for (const entry of registry) {
+    if (!entry.enabled || !fs.existsSync(entry.path)) continue;
+
+    try {
+      const loaded = await loadExtensionIntoAllSessions(entry.path);
+      entry.id = loaded.id || entry.id;
+      entry.name = loaded.name || entry.name;
+    } catch {
+      entry.enabled = false;
     }
   }
+
+  saveRegistry(registry);
 }
 
 // ── CRX download & install ──────────────────────────────────────────────────
@@ -95,7 +247,7 @@ function extractZipFromCrx(buf) {
 }
 
 async function installExtensionById(extensionId) {
-  const url = `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=49.0&acceptformat=crx3&x=id%3D${extensionId}%26uc`;
+  const url = `https://clients2.google.com/service/update2/crx?response=redirect&os=mac&arch=x64&os_arch=x86_64&prod=chromecrx&prodchannel=stable&prodversion=138.0.7204.169&acceptformat=crx2,crx3&x=id%3D${extensionId}%26installsource%3Dondemand%26uc`;
   const tmpCrx = path.join(os.tmpdir(), `aihub-${extensionId}.crx`);
   const tmpZip = path.join(os.tmpdir(), `aihub-${extensionId}.zip`);
   const extDir = path.join(app.getPath("userData"), "extensions", extensionId);
@@ -113,20 +265,38 @@ async function installExtensionById(extensionId) {
     });
   });
 
-  for (const s of getAllSessions()) {
-    await s.loadExtension(extDir, { allowFileAccess: true });
+  const registry = loadRegistry();
+  for (const entry of registry) {
+    if (entry.id && entry.id !== extensionId && entry.enabled) {
+      await removeExtensionFromAllSessions(entry.id);
+      entry.enabled = false;
+    }
   }
 
-  const registry = loadRegistry();
-  if (!registry.includes(extDir)) {
-    registry.push(extDir);
-    saveRegistry(registry);
+  const loaded = await loadExtensionIntoAllSessions(extDir);
+  const nextRegistry = upsertRegistryEntry({
+    id: loaded.id || extensionId,
+    storeId: extensionId,
+    name: loaded.name || getManifestName(extDir),
+    path: extDir,
+    enabled: true,
+    source: "store",
+  });
+
+  for (const entry of nextRegistry) {
+    if (entry.id && entry.id !== (loaded.id || extensionId)) entry.enabled = false;
   }
+  saveRegistry(nextRegistry);
 
   try { fs.unlinkSync(tmpCrx); } catch {}
   try { fs.unlinkSync(tmpZip); } catch {}
 
-  return { success: true, path: extDir };
+  return {
+    success: true,
+    path: extDir,
+    id: loaded.id || extensionId,
+    name: loaded.name || getManifestName(extDir),
+  };
 }
 
 // ── Window ──────────────────────────────────────────────────────────────────
@@ -237,12 +407,35 @@ ipcMain.handle("pick-extension", async () => {
   if (result.canceled || !result.filePaths.length) return { canceled: true };
   const extPath = result.filePaths[0];
   try {
-    for (const s of getAllSessions()) {
-      await s.loadExtension(extPath, { allowFileAccess: true });
-    }
     const registry = loadRegistry();
-    if (!registry.includes(extPath)) { registry.push(extPath); saveRegistry(registry); }
-    return { success: true, path: extPath };
+    for (const entry of registry) {
+      if (entry.id && entry.enabled) {
+        await removeExtensionFromAllSessions(entry.id);
+        entry.enabled = false;
+      }
+    }
+
+    const loaded = await loadExtensionIntoAllSessions(extPath);
+    const nextRegistry = upsertRegistryEntry({
+      id: loaded.id || null,
+      storeId: null,
+      name: loaded.name || getManifestName(extPath),
+      path: extPath,
+      enabled: true,
+      source: "manual",
+    });
+
+    for (const entry of nextRegistry) {
+      if (entry.id && loaded.id && entry.id !== loaded.id) entry.enabled = false;
+    }
+    saveRegistry(nextRegistry);
+
+    return {
+      success: true,
+      path: extPath,
+      id: loaded.id || null,
+      name: loaded.name || getManifestName(extPath),
+    };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -251,6 +444,28 @@ ipcMain.handle("pick-extension", async () => {
 ipcMain.handle("install-extension", async (_event, extensionId) => {
   try {
     return await installExtensionById(extensionId);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("list-extensions", async () => {
+  return loadRegistry();
+});
+
+ipcMain.handle("toggle-extension", async (_event, extensionId, enabled) => {
+  try {
+    const extensions = await setExtensionEnabled(extensionId, enabled);
+    return { success: true, extensions };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("uninstall-extension", async (_event, extensionId) => {
+  try {
+    const extensions = await uninstallExtension(extensionId);
+    return { success: true, extensions };
   } catch (err) {
     return { success: false, error: err.message };
   }

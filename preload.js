@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   clearProxy:       ()        => ipcRenderer.invoke("clear-proxy"),
   pickExtension:    ()        => ipcRenderer.invoke("pick-extension"),
   installExtension: (id)      => ipcRenderer.invoke("install-extension", id),
+  listExtensions:   ()        => ipcRenderer.invoke("list-extensions"),
+  toggleExtension:  (id, enabled) => ipcRenderer.invoke("toggle-extension", id, enabled),
+  uninstallExtension: (id)    => ipcRenderer.invoke("uninstall-extension", id),
   openExternal:     (url)     => ipcRenderer.send("open-external", url),
 });
