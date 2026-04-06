@@ -16,6 +16,24 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
+## Why AI Hub?
+
+If you use AI tools daily, you know the problem: browser tabs multiply endlessly, AI chats get buried under everything else, and you constantly lose context switching between tools.
+
+AI Hub solves this.
+
+**Your AI tabs live separately from your browser** — always at hand, never lost in a pile of 40 open tabs. One dock icon, one focused window.
+
+**Hit a free-tier limit? Switch in one click.** Each service has its own isolated session, so you can be logged into ChatGPT, Claude, Gemini, DeepSeek, and others simultaneously. When one runs out of free messages, jump to the next — no re-login, no friction.
+
+**Discover more than just ChatGPT.** Most people only know one or two AI tools. AI Hub puts nine of the best side by side — Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi — so you can find the one that works best for your task.
+
+**Built-in proxy** for routing around regional restrictions. **Chrome extensions** support for your favourite tools. All without leaving the app.
+
+**No tokens, no subscriptions, no middleman.** Unlike aggregators that charge you for credits, AI Hub just opens the real websites — so you use whatever plan you already have, including all free tiers, directly.
+
+---
+
 ## Quick Start
 
 1. Download the latest release from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
@@ -65,10 +83,15 @@ Direct DMG install is currently the safest option while signed notarized release
 
 ## Features
 
-- **One app for many AI tools** — keep ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, and Mistral together
+- **AI tabs separate from your browser** — no more losing chats among dozens of browser tabs
+- **Jump between free tiers** — each service has its own isolated session, all logged in at once
+- **Nine AI tools in one window** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, Mistral
 - **Live tabs** — switch between services without reloading the page
 - **Persistent sessions** — stay logged in between launches
 - **Native macOS feel** — clean window chrome, traffic light controls, drag-friendly title area
+- **Built-in proxy** — SOCKS5 / HTTP support for routing around regional restrictions
+- **Chrome extensions** — load extensions from the Web Store directly inside the app
+- **No tokens or subscriptions** — uses the real websites directly, so you keep your existing free tiers and paid plans without paying a middleman
 
 ---
 
