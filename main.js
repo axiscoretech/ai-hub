@@ -760,6 +760,13 @@ ipcMain.on("open-external", (_event, url) => shell.openExternal(url));
 // ── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Strip Electron/Node identifiers from the user-agent so that Google OAuth
+  // and other services that block embedded WebView sign-ins work correctly.
+  const rawUA = app.userAgentFallback;
+  app.userAgentFallback = rawUA
+    .replace(/\s*Electron\/\S+/, "")
+    .replace(/\s*ai-hub\/\S+/, "");
+
   createWindow();
 
   const iconPath = path.join(__dirname, "assets", "icon.png");
