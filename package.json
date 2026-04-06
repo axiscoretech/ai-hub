@@ -1,6 +1,6 @@
 {
   "name": "ai-hub",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Desktop AI Hub — all your AI services in one place",
   "main": "main.js",
   "homepage": "https://github.com/axiscoretech/ai-hub",
@@ -80,10 +80,15 @@
     },
     "dmg": {
       "title": "${productName} ${version}",
+      "background": null,
       "window": {
         "width": 540,
         "height": 380
-      }
+      },
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "win": {
       "icon": "assets/icon.ico",
