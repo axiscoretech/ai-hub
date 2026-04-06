@@ -6,7 +6,7 @@
 
 **All your AI assistants in one place.**
 
-ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · HuggingChat
+ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi
 
 [![Release](https://img.shields.io/github/v/release/axiscoretech/ai-hub?style=flat-square&color=7c6aff)](https://github.com/axiscoretech/ai-hub/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
@@ -65,7 +65,7 @@ Direct DMG install is currently the safest option while signed notarized release
 
 ## Features
 
-- **One app for many AI tools** — keep ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, Mistral, and HuggingChat together
+- **One app for many AI tools** — keep ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, and Mistral together
 - **Live tabs** — switch between services without reloading the page
 - **Persistent sessions** — stay logged in between launches
 - **Native macOS feel** — clean window chrome, traffic light controls, drag-friendly title area
@@ -85,7 +85,6 @@ Direct DMG install is currently the safest option while signed notarized release
 | 🌬️ | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
 | 🐉 | Qwen | [chat.qwenlm.ai](https://chat.qwenlm.ai) |
 | 🌙 | Kimi | [kimi.com](https://www.kimi.com) |
-| 🤗 | HuggingChat | [huggingface.co/chat](https://huggingface.co/chat) |
 
 ---
 
