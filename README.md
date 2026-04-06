@@ -9,32 +9,38 @@
 ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi
 
 [![Release](https://img.shields.io/github/v/release/axiscoretech/ai-hub?style=flat-square&color=7c6aff)](https://github.com/axiscoretech/ai-hub/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
-[![License](https://img.shields.io/github/license/axiscoretech/ai-hub?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-## Why AI Hub?
+![AI Hub screenshot](assets/screenshot.png)
 
-If you use AI tools daily, you know the problem: browser tabs multiply endlessly, AI chats get buried under everything else, and you constantly lose context switching between tools.
+---
 
-AI Hub solves this.
+A macOS and Windows app that wraps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, and Kimi into a single native window. Each service runs in its own isolated session — logins persist, tabs stay live, and none of it clutters your browser.
 
-**Your AI tabs live separately from your browser** — always at hand, never lost in a pile of 40 open tabs. One dock icon, one focused window.
+---
 
-**Hit a free-tier limit? Switch in one click.** Each service has its own isolated session, so you can be logged into ChatGPT, Claude, Gemini, DeepSeek, and others simultaneously. When one runs out of free messages, jump to the next — no re-login, no friction.
+## Features
 
-**Discover more than just ChatGPT.** Most people only know one or two AI tools. AI Hub puts nine of the best side by side — Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi — so you can find the one that works best for your task.
-
-**Built-in proxy** for routing around regional restrictions. **Chrome extensions** support for your favourite tools. All without leaving the app.
-
-**No tokens, no subscriptions, no middleman.** Unlike aggregators that charge you for credits, AI Hub just opens the real websites — so you use whatever plan you already have, including all free tiers, directly.
+- **Separate from your browser** — AI chats get their own dock icon and window, no longer buried under dozens of browser tabs
+- **All sessions active at once** — each service is fully isolated: be logged into all nine simultaneously; when one free tier runs out, switch to the next without re-logging in
+- **Nine AI tools in one place** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, Mistral side by side, easy to discover and compare
+- **No tokens or subscriptions** — connects to the real websites directly, so your existing free and paid plans work as-is; no credits, no middleman
+- **Live tabs** — switching between services does not reload the page
+- **Persistent sessions** — stay logged in between app launches
+- **Native window** — traffic light controls on macOS; clean frameless chrome on Windows
+- **Built-in proxy** — SOCKS5 / HTTP for routing around regional restrictions
+- **Chrome extensions** — load unpacked extensions or install from the Web Store directly in the app
 
 ---
 
 ## Quick Start
+
+### macOS
 
 1. Download the latest release from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
 2. Open the `.dmg`
@@ -49,11 +55,17 @@ xattr -cr /Applications/AI\ Hub.app
 
 Then launch it again.
 
+### Windows
+
+1. Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
+2. Run the installer
+3. Launch **AI Hub** from the Start Menu or Desktop shortcut
+
 ---
 
 ## Install
 
-### Direct Download _(recommended for now)_
+### macOS — Direct Download _(recommended for now)_
 
 Download the right file for your Mac from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest):
 
@@ -70,7 +82,7 @@ If macOS reports that the app is damaged, clear the quarantine flag once and rel
 xattr -cr /Applications/AI\ Hub.app
 ```
 
-### Homebrew
+### macOS — Homebrew
 
 ```bash
 brew tap axiscoretech/tap
@@ -79,19 +91,13 @@ brew install --cask ai-hub
 
 Direct DMG install is currently the safest option while signed notarized releases are still being finalized.
 
----
+### Windows — Direct Download
 
-## Features
+Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and run the installer.
 
-- **AI tabs separate from your browser** — no more losing chats among dozens of browser tabs
-- **Jump between free tiers** — each service has its own isolated session, all logged in at once
-- **Nine AI tools in one window** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Qwen, Kimi, Mistral
-- **Live tabs** — switch between services without reloading the page
-- **Persistent sessions** — stay logged in between launches
-- **Native macOS feel** — clean window chrome, traffic light controls, drag-friendly title area
-- **Built-in proxy** — SOCKS5 / HTTP support for routing around regional restrictions
-- **Chrome extensions** — load extensions from the Web Store directly inside the app
-- **No tokens or subscriptions** — uses the real websites directly, so you keep your existing free tiers and paid plans without paying a middleman
+| Windows | File |
+|---------|------|
+| 64-bit (x64) | `AI-Hub-x.x.x-Setup.exe` |
 
 ---
 
@@ -129,9 +135,10 @@ Requires [Node.js](https://nodejs.org) 18+ and [npm](https://npmjs.com).
 ## Build
 
 ```bash
-npm run dist        # ARM64 + x64 DMG → dist/
+npm run dist        # macOS ARM64 + x64 DMG → dist/
 npm run dist:arm    # Apple Silicon only
-npm run dist:x64    # Intel only
+npm run dist:x64    # Intel Mac only
+npm run dist:win    # Windows x64 NSIS installer → dist/
 ```
 
 ## Maintainers

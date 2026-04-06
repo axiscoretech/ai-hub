@@ -9,13 +9,15 @@
     "url": "https://github.com/axiscoretech/ai-hub"
   },
   "scripts": {
-    "start":       "electron .",
-    "open-app":    "node scripts/open-local-app.js",
+    "start": "electron .",
+    "open-app": "node scripts/open-local-app.js",
     "verify:extensions": "electron scripts/verify-extensions.js",
-    "dist":        "electron-builder --mac --x64 --arm64 --publish never",
-    "dist:arm":    "electron-builder --mac --arm64 --publish never",
-    "dist:x64":    "electron-builder --mac --x64 --publish never",
-    "release":     "electron-builder --mac --x64 --arm64 --publish always"
+    "dist": "electron-builder --mac --x64 --arm64 --publish never",
+    "dist:arm": "electron-builder --mac --arm64 --publish never",
+    "dist:x64": "electron-builder --mac --x64 --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "release": "electron-builder --mac --x64 --arm64 --publish always",
+    "release:win": "electron-builder --win --x64 --publish always"
   },
   "keywords": [],
   "author": "",
@@ -39,7 +41,8 @@
       "main.js",
       "preload.js",
       "index.html",
-      "package.json"
+      "package.json",
+      "node_modules/**"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -49,20 +52,63 @@
       "entitlements": "assets/entitlements.mac.plist",
       "entitlementsInherit": "assets/entitlements.mac.inherit.plist",
       "target": [
-        { "target": "dmg", "arch": ["arm64"] },
-        { "target": "dmg", "arch": ["x64"] },
-        { "target": "zip", "arch": ["arm64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {
       "title": "${productName} ${version}",
-      "window": { "width": 540, "height": 380 }
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "publish": {
       "provider": "github",
       "releaseType": "release"
     },
     "afterSign": "scripts/notarize.js"
+  },
+  "dependencies": {
+    "yauzl": "^3.3.0"
   }
 }

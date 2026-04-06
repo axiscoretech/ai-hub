@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onTabActive:      (cb)      => ipcRenderer.on("tab-active", (_e, name) => cb(name)),
   onTabProgress:    (cb)      => ipcRenderer.on("tab-progress", (_e, name, event) => cb(name, event)),
   setTopBarHeight:  (h)       => ipcRenderer.send("set-topbar-height", h),
+  reloadActiveTab:  (ignoreCache) => ipcRenderer.send("reload-active-tab", ignoreCache),
+  resetTabSession:  (tabName)  => ipcRenderer.invoke("reset-tab-session", tabName),
   setProxy:         (config)  => ipcRenderer.invoke("set-proxy", config),
   clearProxy:       ()        => ipcRenderer.invoke("clear-proxy"),
   pickExtension:    ()        => ipcRenderer.invoke("pick-extension"),

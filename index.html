@@ -14,6 +14,10 @@
         -webkit-user-select: none;
       }
 
+      body[data-theme="light"] {
+        background: #f3f5f9;
+      }
+
       input, select {
         user-select: text;
         -webkit-user-select: text;
@@ -108,11 +112,12 @@
         flex-shrink: 0;
         display: flex;
         align-items: center;
+        gap: 6px;
         padding: 0 10px 0 6px;
         -webkit-app-region: no-drag;
       }
 
-      #vpn-btn {
+      .toolbar-btn {
         display: flex;
         align-items: center;
         gap: 5px;
@@ -127,11 +132,85 @@
         transition: all 0.15s;
         white-space: nowrap;
       }
-      #vpn-btn:hover { background: #2a2a2a; color: #bbb; border-color: #4a4a4a; }
+      .toolbar-btn:hover { background: #2a2a2a; color: #bbb; border-color: #4a4a4a; }
       #vpn-btn.proxy-on {
         background: rgba(124,106,255,0.1);
         border-color: rgba(124,106,255,0.45);
         color: #a99fff;
+      }
+
+      body[data-theme="light"] #toolbar {
+        background: #f3f5f9;
+        border-bottom-color: #d8deea;
+      }
+      body[data-theme="light"] .tab {
+        color: #5a6474;
+      }
+      body[data-theme="light"] .tab:hover {
+        background: #e7ebf4;
+        color: #101828;
+      }
+      body[data-theme="light"] .tab.active {
+        background: #dfe6f4;
+        color: #101828;
+      }
+      body[data-theme="light"] .toolbar-btn {
+        color: #516074;
+        border-color: #cdd6e5;
+        background: rgba(255,255,255,0.65);
+      }
+      body[data-theme="light"] .toolbar-btn:hover {
+        background: #e9edf6;
+        color: #111827;
+        border-color: #b9c5d8;
+      }
+      body[data-theme="light"] #vpn-panel {
+        background: #ffffff;
+        border-color: #d8deea;
+        box-shadow: 0 18px 48px rgba(26, 32, 44, 0.14);
+      }
+      body[data-theme="light"] .p-status {
+        border-bottom-color: #edf1f7;
+      }
+      body[data-theme="light"] #p-status-text {
+        color: #718096;
+      }
+      body[data-theme="light"] .p-mode,
+      body[data-theme="light"] #p-type,
+      body[data-theme="light"] #p-host,
+      body[data-theme="light"] #p-port,
+      body[data-theme="light"] #p-load-ext,
+      body[data-theme="light"] #p-reset-claude {
+        background: #f8fafc;
+        border-color: #d7deea;
+        color: #4a5568;
+      }
+      body[data-theme="light"] .p-mode:hover,
+      body[data-theme="light"] #p-load-ext:hover,
+      body[data-theme="light"] #p-reset-claude:hover,
+      body[data-theme="light"] .p-ext-item:hover {
+        background: #eef2f8;
+      }
+      body[data-theme="light"] .p-divider::before,
+      body[data-theme="light"] .p-divider::after {
+        background: #e5eaf3;
+      }
+      body[data-theme="light"] .p-divider span,
+      body[data-theme="light"] .p-ext-head,
+      body[data-theme="light"] .p-tip,
+      body[data-theme="light"] .p-ext-meta,
+      body[data-theme="light"] .p-ext-empty {
+        color: #7a8799;
+      }
+      body[data-theme="light"] .p-ext-name {
+        color: #334155;
+      }
+      body[data-theme="light"] .p-ext-badge {
+        background: #edf2f7;
+        color: #667085;
+      }
+      body[data-theme="light"] .p-ext-status {
+        color: #64748b;
       }
 
       /* ── Overlay ──────────────────────────────────────────────── */
@@ -227,6 +306,21 @@
       }
       #p-apply:hover { background: #7c6aff; }
       #p-apply:disabled { opacity: 0.45; cursor: default; }
+      #p-reset-claude {
+        width: 100%;
+        padding: 8px;
+        border-radius: 7px;
+        border: 1px solid rgba(210,70,70,0.35);
+        background: rgba(210,70,70,0.08);
+        color: #f09a9a;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.12s;
+        margin: -4px 0 14px;
+      }
+      #p-reset-claude:hover { background: rgba(210,70,70,0.18); color: #ffd1d1; }
+      #p-reset-claude:disabled { opacity: 0.45; cursor: default; }
 
       /* Divider */
       .p-divider { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
@@ -362,7 +456,10 @@
       </div>
 
       <div id="vpn-area">
-        <button id="vpn-btn" onclick="toggleVpnPanel()">🛡️ Proxy</button>
+        <button class="toolbar-btn" id="reload-btn" onclick="reloadPage(false)" title="Reload current page (Cmd/Ctrl+R)">↻ Reload</button>
+        <button class="toolbar-btn" id="hard-reload-btn" onclick="reloadPage(true)" title="Hard reload ignoring cache (Cmd/Ctrl+Shift+R)">⟲ Hard</button>
+        <button class="toolbar-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle shell theme">◐ Theme</button>
+        <button class="toolbar-btn" id="vpn-btn" onclick="toggleVpnPanel()">🛡️ Proxy</button>
       </div>
     </div>
 
@@ -397,6 +494,7 @@
       <div class="p-tip" id="p-tip">💡 Tor Browser: 127.0.0.1:9050</div>
 
       <button id="p-apply" onclick="applyProxy()">Apply</button>
+      <button id="p-reset-claude" onclick="resetClaudeSession()">Reset Claude Session</button>
 
       <div class="p-divider"><span>or use a browser extension</span></div>
 
@@ -461,6 +559,25 @@
 
       let activeTabName = null;
       const tabLoadState = {}; // name → 'start' | 'dom' | 'finish' | 'fail'
+      let currentTheme = localStorage.getItem('aihub-theme') || 'dark';
+
+      function applyTheme(theme) {
+        currentTheme = theme;
+        document.body.dataset.theme = theme;
+        localStorage.setItem('aihub-theme', theme);
+        const themeBtn = document.getElementById('theme-btn');
+        if (themeBtn) {
+          themeBtn.textContent = theme === 'light' ? '◑ Light' : '◐ Dark';
+        }
+      }
+
+      function toggleTheme() {
+        applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+      }
+
+      function reloadPage(ignoreCache) {
+        window.electronAPI.reloadActiveTab(Boolean(ignoreCache));
+      }
 
       function setActive(name) {
         document.querySelectorAll('.tab').forEach(el => {
@@ -653,6 +770,29 @@
           btn.textContent = 'Apply';
           btn.disabled = false;
           if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }
+      }
+
+      async function resetClaudeSession() {
+        clearMsg();
+        const btn = document.getElementById('p-reset-claude');
+        btn.textContent = 'Resetting…';
+        btn.disabled = true;
+
+        try {
+          const res = await window.electronAPI.resetTabSession('Claude');
+          if (res.success) {
+            activeTabName = 'Claude';
+            setActive('Claude');
+            showMsg('Claude session cleared. Try signing in again.', 'ok');
+          } else {
+            showMsg('Failed: ' + (res.error || 'Unknown error'), 'err');
+          }
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        } finally {
+          btn.textContent = 'Reset Claude Session';
+          btn.disabled = false;
         }
       }
 
@@ -883,6 +1023,7 @@
         el.textContent = '';
       }
 
+      applyTheme(currentTheme);
       refreshExtensions();
     </script>
   </body>

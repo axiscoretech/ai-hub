@@ -6,13 +6,15 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const os = require("os");
-const { execFile } = require("child_process");
+const yauzl = require("yauzl");
 
 let win;
 let views = {};
 let activeTab = null;
 let topBarHeight = 60;
 let proxyConfig = null;
+let tabState = {};
+let popupWindows = new Set();
 
 const tabs = {
   "ChatGPT":    "https://chat.openai.com/",
@@ -30,12 +32,25 @@ function getAllSessions() {
   return Object.keys(tabs).map(name => session.fromPartition(`persist:${name}`));
 }
 
+function buildViewPreferences(name) {
+  return {
+    partition: `persist:${name}`,
+    contextIsolation: true,
+    nodeIntegration: false,
+  };
+}
+
 function getExtensionsApi(targetSession) {
   return targetSession.extensions ?? targetSession;
 }
 
 async function applyProxyToAll(config) {
   await Promise.all(getAllSessions().map(s => s.setProxy(config)));
+}
+
+function rememberTabUrl(name, url) {
+  if (!name || !url || url === "about:blank") return;
+  tabState[name] = { url };
 }
 
 // ── Extension registry ──────────────────────────────────────────────────────
@@ -260,8 +275,27 @@ async function installExtensionById(extensionId) {
 
   fs.mkdirSync(extDir, { recursive: true });
   await new Promise((resolve, reject) => {
-    execFile("unzip", ["-o", tmpZip, "-d", extDir], (err) => {
-      err ? reject(err) : resolve();
+    yauzl.open(tmpZip, { lazyEntries: true }, (err, zipfile) => {
+      if (err) return reject(err);
+      zipfile.readEntry();
+      zipfile.on("entry", (entry) => {
+        const destPath = path.join(extDir, entry.fileName);
+        if (/\/$/.test(entry.fileName)) {
+          fs.mkdirSync(destPath, { recursive: true });
+          zipfile.readEntry();
+        } else {
+          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          zipfile.openReadStream(entry, (streamErr, readStream) => {
+            if (streamErr) return reject(streamErr);
+            const writeStream = fs.createWriteStream(destPath);
+            readStream.pipe(writeStream);
+            writeStream.on("finish", () => zipfile.readEntry());
+            writeStream.on("error", reject);
+          });
+        }
+      });
+      zipfile.on("end", resolve);
+      zipfile.on("error", reject);
     });
   });
 
@@ -315,30 +349,254 @@ function createWindow() {
   });
 
   win.loadFile("index.html");
+  views = {};
+  activeTab = null;
+  tabState = {};
+  popupWindows = new Set();
 
   win.on("resize", () => {
-    if (activeTab && views[activeTab]) resizeView(views[activeTab]);
+    if (activeTab && isViewUsable(views[activeTab])) resizeView(views[activeTab]);
   });
 }
 
-function createTab(name, url) {
-  const view = new BrowserView({
-    webPreferences: {
-      partition: `persist:${name}`,
-      contextIsolation: true,
-      nodeIntegration: false,
+function isViewUsable(view) {
+  return !!(view && view.webContents && !view.webContents.isDestroyed());
+}
+
+function getTabUrl(name) {
+  return tabState[name]?.url || tabs[name];
+}
+
+function getTabOrigin(name) {
+  try {
+    return new URL(tabs[name]).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isServiceUrlForTab(name, url) {
+  try {
+    const tabOrigin = getTabOrigin(name);
+    if (!tabOrigin) return false;
+    return new URL(url).origin === tabOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function destroyAllViews() {
+  for (const popup of popupWindows) {
+    try { popup.close(); } catch {}
+  }
+  popupWindows.clear();
+
+  if (!win || win.isDestroyed()) {
+    views = {};
+    activeTab = null;
+    return;
+  }
+
+  for (const [name, view] of Object.entries(views)) {
+    if (!isViewUsable(view)) continue;
+
+    try {
+      rememberTabUrl(name, view.webContents.getURL());
+    } catch {}
+
+    try {
+      win.removeBrowserView(view);
+    } catch {}
+
+    try {
+      view.webContents.removeAllListeners();
+      view.webContents.close({ waitForBeforeUnload: false });
+    } catch {}
+  }
+
+  views = {};
+  activeTab = null;
+}
+
+function destroyTabView(name) {
+  const view = views[name];
+  if (!isViewUsable(view)) {
+    delete views[name];
+    if (activeTab === name) activeTab = null;
+    return;
+  }
+
+  try {
+    rememberTabUrl(name, view.webContents.getURL());
+  } catch {}
+
+  try {
+    win.removeBrowserView(view);
+  } catch {}
+
+  try {
+    view.webContents.removeAllListeners();
+    view.webContents.close({ waitForBeforeUnload: false });
+  } catch {}
+
+  delete views[name];
+  if (activeTab === name) activeTab = null;
+}
+
+async function resetTabSession(name) {
+  const targetSession = session.fromPartition(`persist:${name}`);
+
+  destroyTabView(name);
+
+  try { await targetSession.clearCache(); } catch {}
+  try { await targetSession.clearStorageData(); } catch {}
+  try {
+    const cookies = await targetSession.cookies.get({});
+    await Promise.all(cookies.map(cookie =>
+      targetSession.cookies.remove(
+        `${cookie.secure ? "https" : "http"}://${cookie.domain.replace(/^\./, "")}${cookie.path}`,
+        cookie.name
+      )
+    ));
+  } catch {}
+  try { await targetSession.flushStorageData?.(); } catch {}
+
+  delete tabState[name];
+
+  if (win && !win.isDestroyed()) {
+    createTab(name, tabs[name]);
+    win.webContents.send("tab-active", name);
+  }
+}
+
+async function withRebuiltViews(action) {
+  const previouslyActiveTab = activeTab;
+  destroyAllViews();
+
+  const result = await action();
+
+  const tabToRestore = previouslyActiveTab && tabs[previouslyActiveTab]
+    ? previouslyActiveTab
+    : Object.keys(tabs)[0];
+
+  if (win && !win.isDestroyed() && tabToRestore) {
+    switchTab(tabToRestore);
+  }
+
+  return result;
+}
+
+function reloadActiveTab(ignoreCache = false) {
+  const view = views[activeTab];
+  if (!isViewUsable(view)) return;
+
+  if (ignoreCache) view.webContents.reloadIgnoringCache();
+  else view.webContents.reload();
+}
+
+function reloadWebContents(webContents, ignoreCache = false) {
+  if (!webContents || webContents.isDestroyed()) return;
+  if (ignoreCache) webContents.reloadIgnoringCache();
+  else webContents.reload();
+}
+
+function attachReloadShortcuts(webContents, reloadHandler = reloadActiveTab) {
+  webContents.on("before-input-event", (event, input) => {
+    const isReloadKey = input.key.toLowerCase() === "r" && (input.control || input.meta);
+    if (!isReloadKey) return;
+
+    event.preventDefault();
+    reloadHandler(Boolean(input.shift));
+  });
+}
+
+function openPopupWindow(tabName, url) {
+  const popup = new BrowserWindow({
+    width: 520,
+    height: 760,
+    parent: win,
+    modal: false,
+    autoHideMenuBar: true,
+    titleBarStyle: "default",
+    webPreferences: buildViewPreferences(tabName),
+  });
+
+  let handedOffToMainView = false;
+
+  popupWindows.add(popup);
+  popup.on("closed", () => {
+    popupWindows.delete(popup);
+    if (activeTab === tabName && !handedOffToMainView) reloadActiveTab(false);
+  });
+
+  attachReloadShortcuts(popup.webContents, (ignoreCache) => reloadWebContents(popup.webContents, ignoreCache));
+  const finishAuthHandoff = async (navigatedUrl) => {
+    if (handedOffToMainView) return;
+    if (!isServiceUrlForTab(tabName, navigatedUrl)) return;
+
+    handedOffToMainView = true;
+    rememberTabUrl(tabName, navigatedUrl);
+
+    try {
+      const targetSession = session.fromPartition(`persist:${tabName}`);
+      await targetSession.cookies.flushStore?.();
+      await targetSession.flushStorageData?.();
+    } catch {}
+
+    if (activeTab === tabName) {
+      destroyTabView(tabName);
+      createTab(tabName, navigatedUrl);
+      win.webContents.send("tab-active", tabName);
     }
+
+    if (!popup.isDestroyed()) {
+      setTimeout(() => {
+        if (!popup.isDestroyed()) popup.close();
+      }, 250);
+    }
+  };
+
+  popup.webContents.on("did-navigate", (_event, navigatedUrl) => {
+    void finishAuthHandoff(navigatedUrl);
+  });
+  popup.webContents.on("did-navigate-in-page", (_event, navigatedUrl) => {
+    void finishAuthHandoff(navigatedUrl);
+  });
+  popup.webContents.on("did-finish-load", () => {
+    const currentUrl = popup.webContents.getURL();
+    void finishAuthHandoff(currentUrl);
+  });
+
+  popup.loadURL(url);
+}
+
+function createTab(name, url = getTabUrl(name)) {
+  const view = new BrowserView({
+    webPreferences: buildViewPreferences(name)
   });
   views[name] = view;
   win.setBrowserView(view);
   resizeView(view);
 
+  view.webContents.once("destroyed", () => {
+    if (views[name] === view) delete views[name];
+    if (activeTab === name) activeTab = null;
+  });
+
   if (proxyConfig) {
     session.fromPartition(`persist:${name}`).setProxy(proxyConfig);
   }
 
+  attachReloadShortcuts(view.webContents);
+
   view.webContents.on("did-start-loading", () => {
     win.webContents.send("tab-progress", name, "start");
+  });
+  view.webContents.on("did-navigate", (_event, navigatedUrl) => {
+    rememberTabUrl(name, navigatedUrl);
+  });
+  view.webContents.on("did-navigate-in-page", (_event, navigatedUrl) => {
+    rememberTabUrl(name, navigatedUrl);
   });
   view.webContents.on("dom-ready", () => {
     win.webContents.send("tab-progress", name, "dom");
@@ -354,7 +612,13 @@ function createTab(name, url) {
   view.webContents.loadURL(url);
 
   view.webContents.setWindowOpenHandler(({ url: u }) => {
-    view.webContents.loadURL(u);
+    if (name === "Claude") {
+      rememberTabUrl(name, u);
+      view.webContents.loadURL(u);
+      return { action: "deny" };
+    }
+
+    openPopupWindow(name, u);
     return { action: "deny" };
   });
 
@@ -362,11 +626,15 @@ function createTab(name, url) {
 }
 
 function switchTab(name) {
-  if (!views[name]) {
-    createTab(name, tabs[name]);
+  if (!isViewUsable(views[name])) {
+    delete views[name];
+    createTab(name);
   } else {
     win.setBrowserView(views[name]);
     resizeView(views[name]);
+    try {
+      rememberTabUrl(name, views[name].webContents.getURL());
+    } catch {}
     activeTab = name;
   }
   win.webContents.send("tab-active", name);
@@ -384,7 +652,7 @@ ipcMain.on("switch-tab", (_event, tabName) => switchTab(tabName));
 
 ipcMain.on("set-topbar-height", (_event, h) => {
   topBarHeight = h;
-  if (activeTab && views[activeTab]) resizeView(views[activeTab]);
+  if (activeTab && isViewUsable(views[activeTab])) resizeView(views[activeTab]);
 });
 
 ipcMain.handle("set-proxy", async (_event, config) => {
@@ -399,6 +667,20 @@ ipcMain.handle("clear-proxy", async () => {
   return { success: true };
 });
 
+ipcMain.on("reload-active-tab", (_event, ignoreCache) => {
+  reloadActiveTab(Boolean(ignoreCache));
+});
+
+ipcMain.handle("reset-tab-session", async (_event, tabName) => {
+  try {
+    if (!tabs[tabName]) throw new Error("Unknown tab");
+    await resetTabSession(tabName);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle("pick-extension", async () => {
   const result = await dialog.showOpenDialog(win, {
     title: "Select unpacked Chrome extension folder",
@@ -407,35 +689,37 @@ ipcMain.handle("pick-extension", async () => {
   if (result.canceled || !result.filePaths.length) return { canceled: true };
   const extPath = result.filePaths[0];
   try {
-    const registry = loadRegistry();
-    for (const entry of registry) {
-      if (entry.id && entry.enabled) {
-        await removeExtensionFromAllSessions(entry.id);
-        entry.enabled = false;
+    return await withRebuiltViews(async () => {
+      const registry = loadRegistry();
+      for (const entry of registry) {
+        if (entry.id && entry.enabled) {
+          await removeExtensionFromAllSessions(entry.id);
+          entry.enabled = false;
+        }
       }
-    }
 
-    const loaded = await loadExtensionIntoAllSessions(extPath);
-    const nextRegistry = upsertRegistryEntry({
-      id: loaded.id || null,
-      storeId: null,
-      name: loaded.name || getManifestName(extPath),
-      path: extPath,
-      enabled: true,
-      source: "manual",
+      const loaded = await loadExtensionIntoAllSessions(extPath);
+      const nextRegistry = upsertRegistryEntry({
+        id: loaded.id || null,
+        storeId: null,
+        name: loaded.name || getManifestName(extPath),
+        path: extPath,
+        enabled: true,
+        source: "manual",
+      });
+
+      for (const entry of nextRegistry) {
+        if (entry.id && loaded.id && entry.id !== loaded.id) entry.enabled = false;
+      }
+      saveRegistry(nextRegistry);
+
+      return {
+        success: true,
+        path: extPath,
+        id: loaded.id || null,
+        name: loaded.name || getManifestName(extPath),
+      };
     });
-
-    for (const entry of nextRegistry) {
-      if (entry.id && loaded.id && entry.id !== loaded.id) entry.enabled = false;
-    }
-    saveRegistry(nextRegistry);
-
-    return {
-      success: true,
-      path: extPath,
-      id: loaded.id || null,
-      name: loaded.name || getManifestName(extPath),
-    };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -443,7 +727,7 @@ ipcMain.handle("pick-extension", async () => {
 
 ipcMain.handle("install-extension", async (_event, extensionId) => {
   try {
-    return await installExtensionById(extensionId);
+    return await withRebuiltViews(() => installExtensionById(extensionId));
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -455,7 +739,7 @@ ipcMain.handle("list-extensions", async () => {
 
 ipcMain.handle("toggle-extension", async (_event, extensionId, enabled) => {
   try {
-    const extensions = await setExtensionEnabled(extensionId, enabled);
+    const extensions = await withRebuiltViews(() => setExtensionEnabled(extensionId, enabled));
     return { success: true, extensions };
   } catch (err) {
     return { success: false, error: err.message };
@@ -464,7 +748,7 @@ ipcMain.handle("toggle-extension", async (_event, extensionId, enabled) => {
 
 ipcMain.handle("uninstall-extension", async (_event, extensionId) => {
   try {
-    const extensions = await uninstallExtension(extensionId);
+    const extensions = await withRebuiltViews(() => uninstallExtension(extensionId));
     return { success: true, extensions };
   } catch (err) {
     return { success: false, error: err.message };

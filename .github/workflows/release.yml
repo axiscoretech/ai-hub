@@ -6,7 +6,7 @@ on:
       - "v*"
 
 jobs:
-  build:
+  build-mac:
     runs-on: macos-latest
 
     permissions:
@@ -94,3 +94,28 @@ jobs:
           if [ -n "$CSC_KEYCHAIN" ]; then
             security delete-keychain "$CSC_KEYCHAIN" || true
           fi
+
+  build-win:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build and publish Windows release
+        run: npx electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
