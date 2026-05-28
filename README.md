@@ -47,6 +47,8 @@ A macOS and Windows app that wraps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perp
 3. Drag **AI Hub.app** into `/Applications`
 4. Launch the app
 
+On first launch, macOS may block the app because it was downloaded outside the App Store. Open **System Settings → Privacy & Security**, scroll to the security section at the bottom, and click **Open Anyway** next to AI Hub (or confirm when prompted). You only need to do this once.
+
 If macOS says the app is damaged, run:
 
 ```bash
@@ -76,6 +78,8 @@ Download the right file for your Mac from [**Releases**](https://github.com/axis
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
+When installing from Releases (not Homebrew), macOS Gatekeeper may refuse to open the app on first launch. Go to **System Settings → Privacy & Security** and use **Open Anyway** for AI Hub at the bottom of the page. Alternatively, right-click **AI Hub.app** in `/Applications` and choose **Open** — then confirm in the dialog.
+
 If macOS reports that the app is damaged, clear the quarantine flag once and relaunch:
 
 ```bash
@@ -88,6 +92,8 @@ xattr -cr /Applications/AI\ Hub.app
 brew tap axiscoretech/tap
 brew install --cask ai-hub
 ```
+
+Homebrew handles Gatekeeper for you — you usually do not need to allow the app manually in System Settings.
 
 Direct DMG install is currently the safest option while signed notarized releases are still being finalized.
 
