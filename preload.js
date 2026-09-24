@@ -38,4 +38,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   tasksToggleWorkspace: () => ipcRenderer.invoke("tasks-toggle-workspace"),
   tasksClearCapture: () => ipcRenderer.invoke("tasks-clear-capture"),
   onTasks: (cb) => ipcRenderer.on("tasks-status", (_event, status) => cb(status)),
+  googleStatus: () => ipcRenderer.invoke("google-status"),
+  googleSignIn: () => ipcRenderer.invoke("google-sign-in"),
+  googleApplyAll: () => ipcRenderer.invoke("google-apply-all"),
+  googleUseShared: (service) => ipcRenderer.invoke("google-use-shared", service),
+  googleUseOther: (service) => ipcRenderer.invoke("google-use-other", service),
+  onGoogle: (cb) => ipcRenderer.on("google-status", (_event, status) => cb(status)),
 });

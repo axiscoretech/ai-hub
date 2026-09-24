@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <title>AI Hub</title>
     <link rel="stylesheet" href="board.css" />
+    <link rel="stylesheet" href="google-ui.css" />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -37,7 +38,11 @@
         background: #1e1e1e;
         border-bottom: 1px solid #333;
         -webkit-app-region: drag;
+        overflow: hidden;
+        z-index: 50;
       }
+      #google-overlay { display: none; }
+      #google-panel { display: none; }
 
       /* ── Progress bar ─────────────────────────────────────────── */
 
@@ -684,6 +689,7 @@
           <svg class="icon-display" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1.4" stroke="currentColor" stroke-width="1.5"/><path d="M6 13.5h4M8 11v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
         <button class="toolbar-btn icon-btn" id="tasks-btn" type="button" title="Compare (Cmd/Ctrl+Shift+B)" aria-label="Compare"></button>
+        <button class="toolbar-btn icon-btn" id="google-btn" type="button" title="Sign in with Google" aria-label="Sign in with Google">G</button>
         <button class="toolbar-btn icon-btn" id="vpn-btn" type="button" onclick="toggleVpnPanel()" title="WireGuard" aria-label="WireGuard">
           <svg id="vpn-flag-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.2 1.8v12.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3.2 2.6h8.2l-1.6 2.5 1.6 2.5H3.2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
           <span id="vpn-flag-emoji" hidden></span>
@@ -715,6 +721,17 @@
     </div>
 
     <div id="board" aria-hidden="true"></div>
+    <div id="google-overlay" hidden></div>
+    <div id="google-panel" hidden aria-label="Google sign-in">
+      <h2>Google</h2>
+      <p>Use one Google account on every tab. A site may ask you to press Continue once.</p>
+      <div id="google-email">No shared Google account yet</div>
+      <div class="g-actions">
+        <button type="button" id="google-signin" class="primary">Sign in with Google</button>
+        <button type="button" id="google-apply" disabled>Sign in all tabs</button>
+      </div>
+      <div id="google-services"></div>
+    </div>
 
     <!-- Backdrop -->
     <div id="vpn-overlay" onclick="closeVpnPanel()"></div>
@@ -1716,5 +1733,6 @@
       layoutInset();
     </script>
     <script src="board.js"></script>
+    <script src="google-ui.js"></script>
   </body>
 </html>

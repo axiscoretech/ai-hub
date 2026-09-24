@@ -10,6 +10,16 @@ const yauzl = require("yauzl");
 const { createWireguard } = require("./wireguard");
 const { createTasks } = require("./tasks");
 const {
+  GOOGLE_PARTITION,
+  ACCOUNT_URL,
+  isGoogleHost,
+  hasGoogleSession,
+  findEmail,
+  loginUrlFor,
+  targetsForApply,
+  CLICK_GOOGLE_SCRIPT,
+} = require("./google");
+const {
   inspectOpenClaw,
   startOpenClawGateway,
   openClawDashboard,
@@ -418,6 +428,7 @@ function createWindow() {
   popupWindows = new Set();
 
   attachBoardShortcut(win.webContents);
+  ignoreUnloadBlock(win.webContents);
   win.webContents.on("did-finish-load", () => {
     void bootTasksWorkspace();
   });
@@ -426,6 +437,11 @@ function createWindow() {
   win.on("resize", () => {
     if (isBoardWorkspace()) return;
     if (activeTab && isViewUsable(views[activeTab])) resizeView(views[activeTab]);
+  });
+  win.on("close", (event) => {
+    if (forceExit.started) return;
+    event.preventDefault();
+    forceExit();
   });
 }
 
@@ -781,7 +797,8 @@ function destroyAllViews() {
 
     try {
       view.webContents.removeAllListeners();
-      view.webContents.close({ waitForBeforeUnload: false });
+      if (typeof view.webContents.destroy === "function") view.webContents.destroy();
+      else view.webContents.close({ waitForBeforeUnload: false });
     } catch {}
   }
 
@@ -805,12 +822,13 @@ function destroyTabView(name) {
     win.removeBrowserView(view);
   } catch {}
 
-  try {
-    view.webContents.removeAllListeners();
-    view.webContents.close({ waitForBeforeUnload: false });
-  } catch {}
+    try {
+      view.webContents.removeAllListeners();
+      if (typeof view.webContents.destroy === "function") view.webContents.destroy();
+      else view.webContents.close({ waitForBeforeUnload: false });
+    } catch {}
 
-  delete views[name];
+    delete views[name];
   if (activeTab === name) activeTab = null;
 }
 
@@ -946,7 +964,7 @@ function openPopupWindow(tabName, url) {
   popup.loadURL(url);
 }
 
-function createTab(name, url = getTabUrl(name)) {
+function createTab(name, url = getTabUrl(name), options = {}) {
   const view = new BrowserView({
     webPreferences: buildViewPreferences(name)
   });
@@ -956,7 +974,7 @@ function createTab(name, url = getTabUrl(name)) {
   // Board mode keeps the view in `views` but must not put it back on the window.
   // setBrowserView here used to run before the detach, so a throw from loadURL
   // left the page covering the board.
-  const showNow = !isBoardWorkspace();
+  const showNow = !isBoardWorkspace() && !options.background;
   if (showNow) {
     win.setBrowserView(view);
     resizeView(view);
@@ -973,6 +991,7 @@ function createTab(name, url = getTabUrl(name)) {
 
   attachReloadShortcuts(view.webContents);
   attachBoardShortcut(view.webContents);
+  ignoreUnloadBlock(view.webContents);
   view.webContents.on("page-title-updated", () => {
     if (shouldNoteTaskActivity(name)) void tasks.noteActivity(name);
   });
@@ -1057,7 +1076,8 @@ function createTab(name, url = getTabUrl(name)) {
   });
 
   attachExternalLinkGuard(view.webContents, name);
-  activeTab = name;
+  if (options.googleClick) armGoogleClick(view, name);
+  if (!options.background) activeTab = name;
   view.webContents.loadURL(url);
 }
 
@@ -1292,6 +1312,193 @@ function taskIpcError(err) {
     error: err && err.message ? err.message : "Couldn't update tasks",
     status,
   };
+}
+
+// ── Shared Google account ───────────────────────────────────────────────────
+
+const googleClicks = new Set();
+let googleWindow = null;
+
+function googleAccountsFile() {
+  return path.join(app.getPath("userData"), "google-accounts.json");
+}
+
+function readGoogleBook() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(googleAccountsFile(), "utf8"));
+    const overrides = raw && raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {};
+    const clean = {};
+    for (const [name, value] of Object.entries(overrides)) {
+      if (tabs[name] && name !== OPENCLAW_TAB && value) clean[name] = true;
+    }
+    return {
+      email: typeof raw.email === "string" ? raw.email.slice(0, 120) : "",
+      overrides: clean,
+    };
+  } catch {
+    return { email: "", overrides: {} };
+  }
+}
+
+function writeGoogleBook(book) {
+  const dest = googleAccountsFile();
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, JSON.stringify(book, null, 2));
+}
+
+function googleSession() {
+  return session.fromPartition(GOOGLE_PARTITION);
+}
+
+async function googleSnapshot() {
+  const book = readGoogleBook();
+  let cookies = [];
+  try { cookies = await googleSession().cookies.get({}); } catch {}
+  return {
+    signedIn: hasGoogleSession(cookies),
+    email: book.email || "",
+    services: Object.keys(tabs),
+    overrides: book.overrides,
+  };
+}
+
+function sendGoogle(status) {
+  if (win && !win.isDestroyed()) win.webContents.send("google-status", status);
+}
+
+async function publishGoogle() {
+  const status = await googleSnapshot();
+  sendGoogle(status);
+  return status;
+}
+
+function cookieUrl(cookie) {
+  const host = String(cookie.domain || "").replace(/^\./, "");
+  return `${cookie.secure ? "https" : "http"}://${host}${cookie.path || "/"}`;
+}
+
+async function clearGoogleCookies(targetSession) {
+  const cookies = await targetSession.cookies.get({});
+  await Promise.all(cookies.filter((cookie) => isGoogleHost(cookie.domain)).map((cookie) => (
+    targetSession.cookies.remove(cookieUrl(cookie), cookie.name).catch(() => {})
+  )));
+}
+
+async function copyGoogleCookies(fromSession, toSession) {
+  const cookies = await fromSession.cookies.get({});
+  for (const cookie of cookies) {
+    if (!isGoogleHost(cookie.domain) || !cookie.name || !cookie.value) continue;
+    const payload = {
+      url: cookieUrl(cookie),
+      name: cookie.name,
+      value: cookie.value,
+      path: cookie.path || "/",
+      secure: Boolean(cookie.secure),
+      httpOnly: Boolean(cookie.httpOnly),
+    };
+    if (String(cookie.domain || "").startsWith(".")) payload.domain = cookie.domain;
+    if (cookie.expirationDate) payload.expirationDate = cookie.expirationDate;
+    if (cookie.sameSite && cookie.sameSite !== "unspecified") payload.sameSite = cookie.sameSite;
+    try { await toSession.cookies.set(payload); } catch {}
+  }
+}
+
+function armGoogleClick(view, name) {
+  if (!view || !view.webContents) return;
+  googleClicks.add(name);
+  const onLoad = () => {
+    if (!googleClicks.has(name)) {
+      view.webContents.removeListener("did-finish-load", onLoad);
+      return;
+    }
+    const current = view.webContents.getURL() || "";
+    if (/accounts\.google\.com|myaccount\.google\.com/.test(current)) return;
+    view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
+    googleClicks.delete(name);
+    view.webContents.removeListener("did-finish-load", onLoad);
+  };
+  view.webContents.on("did-finish-load", onLoad);
+}
+
+function openServiceForGoogle(name) {
+  const url = loginUrlFor(name) || tabs[name];
+  const background = Boolean(activeTab && activeTab !== name);
+  if (!isViewUsable(views[name])) {
+    createTab(name, url, { background, googleClick: name !== "Gemini" });
+    return;
+  }
+  const view = views[name];
+  if (name !== "Gemini") armGoogleClick(view, name);
+  let current = "";
+  try { current = view.webContents.getURL(); } catch {}
+  if (current !== url) view.webContents.loadURL(url);
+  else if (name !== "Gemini") view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
+}
+
+async function rememberGoogleEmail(page) {
+  if (!page || page.isDestroyed()) return;
+  let text = "";
+  try { text = await page.executeJavaScript("document.body ? document.body.innerText.slice(0, 4000) : ''", true); } catch {}
+  const email = findEmail(text);
+  if (!email) return;
+  const book = readGoogleBook();
+  book.email = email;
+  writeGoogleBook(book);
+}
+
+function openGoogleChooser(partition) {
+  const targetSession = session.fromPartition(partition);
+  try { targetSession.setUserAgent(app.userAgentFallback); } catch {}
+  if (proxyConfig) targetSession.setProxy(proxyConfig).catch(() => {});
+  if (googleWindow && !googleWindow.isDestroyed()) {
+    googleWindow.close();
+  }
+  const popup = new BrowserWindow({
+    width: 520,
+    height: 760,
+    parent: win,
+    autoHideMenuBar: true,
+    title: "Google",
+    backgroundColor: themeColor(),
+    webPreferences: {
+      partition,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  googleWindow = popup;
+  popup.sharedGoogle = partition === GOOGLE_PARTITION;
+  const note = () => {
+    const follow = popup.sharedGoogle ? rememberGoogleEmail(popup.webContents) : Promise.resolve();
+    void follow.then(() => publishGoogle());
+  };
+  popup.webContents.on("did-navigate", (_event, url) => {
+    if (/myaccount\.google\.com/.test(url || "")) note();
+  });
+  popup.on("closed", () => {
+    if (googleWindow === popup) googleWindow = null;
+    void publishGoogle();
+  });
+  popup.loadURL(ACCOUNT_URL);
+  return popup;
+}
+
+async function applySharedGoogle() {
+  const source = googleSession();
+  const cookies = await source.cookies.get({});
+  if (!hasGoogleSession(cookies)) {
+    openGoogleChooser(GOOGLE_PARTITION);
+    return publishGoogle();
+  }
+  const book = readGoogleBook();
+  const names = targetsForApply(Object.keys(tabs), book.overrides);
+  for (const name of names) {
+    const target = session.fromPartition(`persist:${name}`);
+    await clearGoogleCookies(target);
+    await copyGoogleCookies(source, target);
+    openServiceForGoogle(name);
+  }
+  return publishGoogle();
 }
 
 // ── IPC ─────────────────────────────────────────────────────────────────────
@@ -1542,6 +1749,42 @@ ipcMain.handle("tasks-clear-capture", async () => {
   try { return await tasks.clearCapture(); } catch (err) { return taskIpcError(err); }
 });
 
+ipcMain.handle("google-status", () => googleSnapshot());
+
+ipcMain.handle("google-sign-in", async () => {
+  openGoogleChooser(GOOGLE_PARTITION);
+  return googleSnapshot();
+});
+
+ipcMain.handle("google-apply-all", () => applySharedGoogle());
+
+ipcMain.handle("google-use-shared", async (_event, service) => {
+  if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
+  const book = readGoogleBook();
+  delete book.overrides[service];
+  writeGoogleBook(book);
+  const source = googleSession();
+  const cookies = await source.cookies.get({});
+  if (hasGoogleSession(cookies)) {
+    const target = session.fromPartition(`persist:${service}`);
+    await clearGoogleCookies(target);
+    await copyGoogleCookies(source, target);
+    openServiceForGoogle(service);
+  }
+  return publishGoogle();
+});
+
+ipcMain.handle("google-use-other", async (_event, service) => {
+  if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
+  const book = readGoogleBook();
+  book.overrides[service] = true;
+  writeGoogleBook(book);
+  const target = session.fromPartition(`persist:${service}`);
+  await clearGoogleCookies(target);
+  openGoogleChooser(`persist:${service}`);
+  return publishGoogle();
+});
+
 // ── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
@@ -1555,6 +1798,7 @@ app.whenReady().then(async () => {
   for (const tabSession of getAllSessions()) {
     tabSession.setUserAgent(browserUserAgent);
   }
+  try { session.fromPartition(GOOGLE_PARTITION).setUserAgent(browserUserAgent); } catch {}
 
   createWindow();
 
@@ -1584,16 +1828,51 @@ app.on("browser-window-created", (_event, window) => {
   window.webContents.on("did-finish-load", apply);
 });
 
+function ignoreUnloadBlock(webContents) {
+  if (!webContents) return;
+  webContents.on("will-prevent-unload", (event) => {
+    event.preventDefault();
+  });
+}
+
+function forceExit() {
+  if (forceExit.started) return;
+  forceExit.started = true;
+  try {
+    try { wireguard.kill(); } catch {}
+    for (const popup of popupWindows) {
+      try { popup.destroy(); } catch {}
+    }
+    popupWindows.clear();
+    for (const view of Object.values(views)) {
+      try {
+        if (win && !win.isDestroyed()) win.removeBrowserView(view);
+      } catch {}
+      try { view.webContents.destroy(); } catch {}
+    }
+    views = {};
+    activeTab = null;
+    try {
+      if (googleWindow && !googleWindow.isDestroyed()) googleWindow.destroy();
+    } catch {}
+    googleWindow = null;
+    for (const window of BrowserWindow.getAllWindows()) {
+      try { window.destroy(); } catch {}
+    }
+  } finally {
+    try { app.exit(0); } catch {}
+    process.kill(process.pid, "SIGKILL");
+  }
+}
+
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  forceExit();
 });
 
-app.on("before-quit", () => {
-  wireguard.kill();
-});
-
-app.on("will-quit", () => {
-  wireguard.kill();
+app.on("before-quit", (event) => {
+  if (forceExit.started) return;
+  event.preventDefault();
+  forceExit();
 });
 
 app.on("activate", () => {
