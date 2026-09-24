@@ -6,7 +6,7 @@ const {
   findEmail,
   loginUrlFor,
   targetsForApply,
-} = require("../google");
+} = require("../out/main/google");
 
 test("google hosts are recognized and other sites are not", () => {
   assert.equal(isGoogleHost(".google.com"), true);

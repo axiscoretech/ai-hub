@@ -108,6 +108,94 @@
         background: #f8fafc;
       }
 
+      #tunnel-dropped {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0;
+        padding: 7px 12px;
+        background: #3a2418;
+        color: #ffd7b0;
+        font-size: 12px;
+        -webkit-app-region: no-drag;
+      }
+      #tunnel-dropped[hidden] { display: none; }
+      #tunnel-reconnect {
+        font-family: inherit;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 7px;
+        border: 1px solid rgba(255, 180, 120, 0.45);
+        background: transparent;
+        color: #ffe6cc;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      body[data-theme="light"] #tunnel-dropped {
+        background: #fff4e8;
+        color: #9a3412;
+      }
+      body[data-theme="light"] #tunnel-reconnect {
+        color: #9a3412;
+        border-color: #fdba74;
+        background: #fff;
+      }
+
+      #account-switch {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-right: 8px;
+        -webkit-app-region: no-drag;
+      }
+      #account-switch[hidden] { display: none; }
+      #account-select, #find-input, #custom-name, #custom-url, #hotkey-input, #spellcheck-input {
+        font: inherit;
+        font-size: 12px;
+        color: #eee;
+        background: #2a2a2a;
+        border: 1px solid #3a3a3a;
+        border-radius: 7px;
+        padding: 4px 8px;
+      }
+      #find-bar, #compare-bar, #update-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: #242424;
+        color: #ddd;
+        font-size: 12px;
+        -webkit-app-region: no-drag;
+      }
+      #find-bar[hidden], #compare-bar[hidden], #update-bar[hidden] { display: none; }
+      #find-bar button, #compare-bar button, #update-bar button, #account-add {
+        font: inherit;
+        font-size: 12px;
+        color: #eee;
+        background: transparent;
+        border: 1px solid #4a4a4a;
+        border-radius: 7px;
+        padding: 3px 8px;
+        cursor: pointer;
+      }
+      .svc-row { display: flex; gap: 6px; align-items: center; margin: 0 0 6px; font-size: 12px; color: #ccc; }
+      .svc-row input[type="text"] { flex: 1; min-width: 0; }
+      body[data-theme="light"] #find-bar,
+      body[data-theme="light"] #compare-bar,
+      body[data-theme="light"] #update-bar { background: #fff; color: #1f2937; }
+      body[data-theme="light"] #account-select,
+      body[data-theme="light"] #find-input,
+      body[data-theme="light"] #custom-name,
+      body[data-theme="light"] #custom-url,
+      body[data-theme="light"] #hotkey-input,
+      body[data-theme="light"] #spellcheck-input {
+        background: #fff;
+        color: #111827;
+        border-color: #d7deea;
+      }
+
       /* ── Progress bar ─────────────────────────────────────────── */
 
       #progress-bar {
@@ -727,17 +815,10 @@
     <div id="toolbar">
       <div id="progress-bar"></div>
 
-      <div id="tabs">
-        <div class="tab" data-name="ChatGPT"     onclick="switchTab('ChatGPT')">🤖 ChatGPT<span class="spinner"></span></div>
-        <div class="tab" data-name="Claude"      onclick="switchTab('Claude')">✨ Claude<span class="spinner"></span></div>
-        <div class="tab" data-name="Gemini"      onclick="switchTab('Gemini')">🌌 Gemini<span class="spinner"></span></div>
-        <div class="tab" data-name="DeepSeek"    onclick="switchTab('DeepSeek')">🧠 DeepSeek<span class="spinner"></span></div>
-        <div class="tab" data-name="Qwen"        onclick="switchTab('Qwen')">🐉 Qwen<span class="spinner"></span></div>
-        <div class="tab" data-name="Perplexity"  onclick="switchTab('Perplexity')">🔎 Perplexity<span class="spinner"></span></div>
-        <div class="tab" data-name="Mistral"     onclick="switchTab('Mistral')">🌬️ Mistral<span class="spinner"></span></div>
-        <div class="tab" data-name="Kimi"        onclick="switchTab('Kimi')">🌙 Kimi<span class="spinner"></span></div>
-        <div class="tab" data-name="Grok"        onclick="switchTab('Grok')">⚡ Grok<span class="spinner"></span></div>
-        <div class="tab" data-name="OpenClaw"    onclick="switchTab('OpenClaw')" title="OpenClaw, formerly Clawd">🦞 OpenClaw<span class="spinner"></span></div>
+      <div id="tabs"></div>
+      <div id="account-switch" hidden>
+        <select id="account-select" aria-label="Account"></select>
+        <button type="button" id="account-add">Add account</button>
       </div>
 
       <div id="vpn-area">
@@ -759,6 +840,25 @@
           <span id="vpn-flag-emoji" hidden></span>
         </button>
       </div>
+    </div>
+
+    <div id="tunnel-dropped" hidden>
+      <span>The tunnel dropped. Reconnect before these tabs can load.</span>
+      <button type="button" id="tunnel-reconnect">Reconnect</button>
+    </div>
+    <div id="find-bar" hidden>
+      <input id="find-input" type="text" placeholder="Find in page" aria-label="Find in page">
+      <button type="button" id="find-next">Next</button>
+      <button type="button" id="find-close">Close</button>
+    </div>
+    <div id="compare-bar" hidden>
+      <span id="compare-title">Compare</span>
+      <button type="button" id="compare-insert">Insert</button>
+      <button type="button" id="compare-close">Back</button>
+    </div>
+    <div id="update-bar" hidden>
+      <span id="update-text">An update is available.</span>
+      <button type="button" id="update-action">Download</button>
     </div>
 
     <div id="openclaw-panel">
@@ -823,6 +923,20 @@
         <p class="p-wg-error" id="p-wg-error"></p>
         <button type="button" id="p-wg-import" onclick="importWireguard()">Import .conf</button>
         <button type="button" id="p-wg-disconnect" onclick="disconnectWireguard()" disabled>Disconnect</button>
+      </div>
+
+      <div class="p-wg on" id="p-services-wrap">
+        <p class="p-wg-note">Each service can use the tunnel or a direct connection. Hidden services stay out of the tab bar. OpenClaw starts hidden.</p>
+        <div id="p-services"></div>
+        <p class="p-wg-note">Add a site</p>
+        <input id="custom-name" type="text" placeholder="Name" aria-label="Service name">
+        <input id="custom-url" type="text" placeholder="https://..." aria-label="Service address">
+        <button type="button" id="custom-add">Add service</button>
+        <p class="p-wg-note">Shortcut and spellcheck</p>
+        <input id="hotkey-input" type="text" placeholder="CommandOrControl+Shift+Space" aria-label="Global shortcut">
+        <button type="button" id="hotkey-save">Save shortcut</button>
+        <input id="spellcheck-input" type="text" placeholder="en-US" aria-label="Spellcheck languages">
+        <button type="button" id="spellcheck-save">Save languages</button>
       </div>
 
       <div id="p-msg"></div>
@@ -910,6 +1024,7 @@
       window.electronAPI.onTabActive(name => {
         activeTabName = name;
         setActive(name);
+        renderAccountSwitch();
         syncOpenClawShell(name);
       });
 
@@ -1066,6 +1181,10 @@
 
       function shellInsetHeight() {
         let height = 60;
+        ['tunnel-dropped', 'find-bar', 'compare-bar', 'update-bar'].forEach((id) => {
+          const bar = document.getElementById(id);
+          if (bar && !bar.hidden) height += bar.offsetHeight || 34;
+        });
         if (activeTabName === 'OpenClaw' && openclawGatewayUp) height += 40;
         if (panelOpen) {
           const panel = document.getElementById('vpn-panel');
@@ -1210,8 +1329,12 @@
         const previousConnected = wgState.connectedId;
         wgState = status;
         renderWireguard(status);
+        renderTunnelDropped(status);
 
-        if (status.connectedId) {
+        if (status.phase === 'dropped') {
+          setProxyStatus(false, 'Tunnel dropped', '');
+          selectMode();
+        } else if (status.connectedId) {
           const cfg = status.configs.find(item => item.id === status.connectedId);
           const place = status.location || (cfg && cfg.location) || (cfg && cfg.name) || 'WireGuard';
           const code = status.countryCode || (cfg && cfg.countryCode) || '';
@@ -1238,7 +1361,7 @@
         list.textContent = '';
         empty.hidden = status.configs.length > 0;
         if (errorEl) errorEl.textContent = status.error || '';
-        if (disconnect) disconnect.disabled = !status.connectedId;
+        if (disconnect) disconnect.disabled = !status.connectedId && status.phase !== 'dropped';
 
         const busy = status.phase === 'connecting';
         status.configs.forEach(cfg => {
@@ -1362,6 +1485,20 @@
         }
       }
 
+      function renderTunnelDropped(status) {
+        const bar = document.getElementById('tunnel-dropped');
+        if (!bar) return;
+        const show = Boolean(status && status.phase === 'dropped' && status.savedId);
+        if (bar.hidden === !show) {
+          layoutInset();
+          return;
+        }
+        bar.hidden = !show;
+        const button = document.getElementById('tunnel-reconnect');
+        if (button) button.disabled = false;
+        layoutInset();
+      }
+
       function initWireguard() {
         if (!window.electronAPI || !window.electronAPI.onWireguardStatus) return;
         window.electronAPI.onWireguardStatus(onWireguardStatus);
@@ -1376,6 +1513,15 @@
               cancel.disabled = false;
               cancel.textContent = 'Cancel';
             });
+          });
+        }
+        const reconnect = document.getElementById('tunnel-reconnect');
+        if (reconnect) {
+          reconnect.addEventListener('click', () => {
+            const id = wgState && wgState.savedId;
+            if (!id) return;
+            reconnect.disabled = true;
+            connectWireguard(id).finally(() => { reconnect.disabled = false; });
           });
         }
       }
@@ -1825,9 +1971,281 @@
         });
       }
 
+      const TAB_ICONS = {
+        ChatGPT: "🤖",
+        Claude: "✨",
+        Gemini: "🌌",
+        DeepSeek: "🧠",
+        Qwen: "🐉",
+        Perplexity: "🔎",
+        Mistral: "🌬️",
+        Kimi: "🌙",
+        Grok: "⚡",
+        OpenClaw: "🦞",
+      };
+      let serviceState = { services: [], hotkey: "", spellcheckLanguages: [] };
+
+      function visibleServices() {
+        return (serviceState.services || []).filter((item) => !item.hidden);
+      }
+
+      function renderServiceTabs() {
+        const root = document.getElementById("tabs");
+        if (!root) return;
+        const active = activeTabName;
+        root.textContent = "";
+        visibleServices().forEach((service) => {
+          const tab = document.createElement("div");
+          tab.className = "tab";
+          tab.dataset.name = service.id;
+          if (service.id === active) tab.classList.add("active");
+          tab.title = service.name;
+          const icon = document.createElement("span");
+          icon.textContent = TAB_ICONS[service.id] || "🌐";
+          const label = document.createElement("span");
+          label.textContent = service.name;
+          const spinner = document.createElement("span");
+          spinner.className = "spinner";
+          tab.append(icon, label, spinner);
+          tab.addEventListener("click", () => switchTab(service.id));
+          root.appendChild(tab);
+        });
+        renderAccountSwitch();
+      }
+
+      function activeServiceRecord() {
+        return (serviceState.services || []).find((item) => item.id === activeTabName) || null;
+      }
+
+      function renderAccountSwitch() {
+        const wrap = document.getElementById("account-switch");
+        const select = document.getElementById("account-select");
+        const service = activeServiceRecord();
+        if (!wrap || !select || !service) {
+          if (wrap) wrap.hidden = true;
+          return;
+        }
+        wrap.hidden = false;
+        select.textContent = "";
+        service.accounts.forEach((account) => {
+          const option = document.createElement("option");
+          option.value = account.id;
+          option.textContent = account.label || account.id;
+          option.selected = account.id === service.activeAccountId;
+          select.appendChild(option);
+        });
+      }
+
+      function renderServiceSettings() {
+        const root = document.getElementById("p-services");
+        if (!root) return;
+        root.textContent = "";
+        (serviceState.services || []).forEach((service, index, list) => {
+          const row = document.createElement("div");
+          row.className = "svc-row";
+          const shown = document.createElement("input");
+          shown.type = "checkbox";
+          shown.checked = !service.hidden;
+          shown.title = "Show tab";
+          shown.addEventListener("change", () => {
+            void window.electronAPI.servicesSetHidden({ id: service.id, hidden: !shown.checked });
+          });
+          const name = document.createElement("span");
+          name.textContent = service.name;
+          const route = document.createElement("select");
+          route.setAttribute("aria-label", service.name + " route");
+          ["tunnel", "direct"].forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value === "tunnel" ? "Tunnel" : "Direct";
+            option.selected = service.route === value;
+            route.appendChild(option);
+          });
+          route.addEventListener("change", () => {
+            void window.electronAPI.servicesSetRoute({ id: service.id, route: route.value });
+          });
+          const up = document.createElement("button");
+          up.type = "button";
+          up.textContent = "Up";
+          up.disabled = index === 0;
+          up.addEventListener("click", () => moveService(index, -1));
+          const down = document.createElement("button");
+          down.type = "button";
+          down.textContent = "Down";
+          down.disabled = index === list.length - 1;
+          down.addEventListener("click", () => moveService(index, 1));
+          row.append(shown, name, route, up, down);
+          if (!service.builtin) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.textContent = "Remove";
+            remove.addEventListener("click", () => {
+              void window.electronAPI.servicesRemoveCustom(service.id);
+            });
+            row.appendChild(remove);
+          }
+          root.appendChild(row);
+        });
+        const hotkey = document.getElementById("hotkey-input");
+        if (hotkey && document.activeElement !== hotkey) hotkey.value = serviceState.hotkey || "";
+        const spell = document.getElementById("spellcheck-input");
+        if (spell && document.activeElement !== spell) {
+          spell.value = (serviceState.spellcheckLanguages || []).join(", ");
+        }
+      }
+
+      function moveService(index, delta) {
+        const ids = (serviceState.services || []).map((item) => item.id);
+        const next = index + delta;
+        if (next < 0 || next >= ids.length) return;
+        const [item] = ids.splice(index, 1);
+        ids.splice(next, 0, item);
+        void window.electronAPI.servicesReorder(ids);
+      }
+
+      function onServices(status) {
+        if (!status || !Array.isArray(status.services)) return;
+        serviceState = status;
+        renderServiceTabs();
+        renderServiceSettings();
+        if (panelOpen) requestAnimationFrame(pushBrowserView);
+      }
+
+      function initServices() {
+        if (!window.electronAPI || !window.electronAPI.onServices) return;
+        window.electronAPI.onServices(onServices);
+        window.electronAPI.servicesList().then(onServices).catch(() => {});
+        const select = document.getElementById("account-select");
+        if (select) {
+          select.addEventListener("change", () => {
+            if (!activeTabName) return;
+            void window.electronAPI.servicesSetAccount({ id: activeTabName, accountId: select.value });
+          });
+        }
+        const add = document.getElementById("account-add");
+        if (add) {
+          add.addEventListener("click", () => {
+            if (!activeTabName) return;
+            const label = window.prompt("Name this account", "Work");
+            if (!label) return;
+            void window.electronAPI.servicesAddAccount({ id: activeTabName, label });
+          });
+        }
+        const custom = document.getElementById("custom-add");
+        if (custom) {
+          custom.addEventListener("click", async () => {
+            const name = document.getElementById("custom-name").value;
+            const url = document.getElementById("custom-url").value;
+            const result = await window.electronAPI.servicesAddCustom({ name, url });
+            if (result && result.success) {
+              document.getElementById("custom-name").value = "";
+              document.getElementById("custom-url").value = "";
+            } else if (result && result.error) {
+              showMsg(result.error, "err");
+            }
+          });
+        }
+        const hotkey = document.getElementById("hotkey-save");
+        if (hotkey) {
+          hotkey.addEventListener("click", async () => {
+            const result = await window.electronAPI.servicesSetHotkey(document.getElementById("hotkey-input").value.trim());
+            if (result && result.error) showMsg(result.error, "err");
+          });
+        }
+        const spell = document.getElementById("spellcheck-save");
+        if (spell) {
+          spell.addEventListener("click", async () => {
+            const languages = document.getElementById("spellcheck-input").value.split(",").map((item) => item.trim()).filter(Boolean);
+            const result = await window.electronAPI.servicesSetSpellcheck(languages);
+            if (result && result.error) showMsg(result.error, "err");
+          });
+        }
+      }
+
+      function setBar(id, show) {
+        const bar = document.getElementById(id);
+        if (!bar || bar.hidden === !show) {
+          layoutInset();
+          return;
+        }
+        bar.hidden = !show;
+        layoutInset();
+      }
+
+      function initFind() {
+        const input = document.getElementById("find-input");
+        const bar = document.getElementById("find-bar");
+        if (!input || !bar || !window.electronAPI.onFindOpen) return;
+        window.electronAPI.onFindOpen(() => {
+          setBar("find-bar", true);
+          input.focus();
+          input.select();
+        });
+        input.addEventListener("input", () => {
+          void window.electronAPI.findInPage(input.value, false);
+        });
+        document.getElementById("find-next").addEventListener("click", () => {
+          void window.electronAPI.findInPage(input.value, true);
+        });
+        document.getElementById("find-close").addEventListener("click", () => {
+          setBar("find-bar", false);
+          void window.electronAPI.findStop();
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void window.electronAPI.findInPage(input.value, true);
+          }
+          if (event.key === "Escape") {
+            setBar("find-bar", false);
+            void window.electronAPI.findStop();
+          }
+        });
+      }
+
+      function initCompare() {
+        if (!window.electronAPI.onCompare) return;
+        window.electronAPI.onCompare((status) => {
+          const title = document.getElementById("compare-title");
+          if (title) title.textContent = status && status.title ? status.title : "Compare";
+          setBar("compare-bar", Boolean(status && status.open));
+        });
+        document.getElementById("compare-insert").addEventListener("click", () => {
+          void window.electronAPI.compareInsert();
+        });
+        document.getElementById("compare-close").addEventListener("click", () => {
+          void window.electronAPI.compareStop();
+        });
+      }
+
+      function initUpdates() {
+        if (!window.electronAPI.onUpdateAvailable) return;
+        const text = document.getElementById("update-text");
+        const action = document.getElementById("update-action");
+        window.electronAPI.onUpdateAvailable((info) => {
+          if (text) text.textContent = "Update " + ((info && info.version) || "") + " is ready to download.";
+          if (action) action.textContent = "Download";
+          setBar("update-bar", true);
+        });
+        window.electronAPI.onUpdateDownloaded(() => {
+          if (text) text.textContent = "Update downloaded. Restart to install it.";
+          if (action) action.textContent = "Restart";
+          action.dataset.mode = "install";
+          setBar("update-bar", true);
+        });
+        action.addEventListener("click", () => {
+          if (action.dataset.mode === "install") void window.electronAPI.updateInstall();
+          else void window.electronAPI.updateDownload();
+        });
+      }
+
       applyTheme(themePreference);
       refreshExtensions();
       initWireguard();
+      initServices();
+      initFind();
+      initCompare();
+      initUpdates();
       layoutInset();
     </script>
     <script src="board.js"></script>

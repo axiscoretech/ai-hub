@@ -1,5 +1,10 @@
-const { app, BrowserWindow, BrowserView, ipcMain, session, dialog, shell, nativeTheme } = require("electron");
+import { handle } from "./ipc-bind";
+const { app, BrowserWindow, BrowserView, ipcMain, session, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
 const path = require("path");
+
+if (process.env.AI_HUB_USER_DATA) {
+  app.setPath("userData", process.env.AI_HUB_USER_DATA);
+}
 
 app.setName("AI Hub");
 const fs = require("fs");
@@ -7,8 +12,10 @@ const https = require("https");
 const http = require("http");
 const os = require("os");
 const yauzl = require("yauzl");
-const { createWireguard } = require("./wireguard");
+const { createWireguard, buildBlackholeProxyConfig } = require("./wireguard");
 const { createTasks } = require("./tasks");
+const { createServices } = require("./services");
+const { streamEnded } = require("./stream-end");
 const {
   GOOGLE_PARTITION,
   ACCOUNT_URL,
@@ -28,12 +35,12 @@ const {
 } = require("./openclaw");
 
 let win;
-let views = {};
+let views: Record<string, any> = {};
 let activeTab = null;
 let topBarHeight = 60;
 let proxyConfig = null;
 let tabState = {};
-let popupWindows = new Set();
+let popupWindows = new Set<any>();
 let openclawSnapshot = null;
 let contentTheme = "dark";
 
@@ -48,28 +55,41 @@ const THEME_COLORS = {
 
 const OPENCLAW_TAB = "OpenClaw";
 
-const tabs = {
-  "ChatGPT":    "https://chat.openai.com/",
-  "Claude":     "https://claude.ai/",
-  "Gemini":     "https://gemini.google.com/",
-  "DeepSeek":   "https://chat.deepseek.com/",
-  "Qwen":       "https://chat.qwen.ai/",
-  "Perplexity": "https://www.perplexity.ai/",
-  "Mistral":    "https://chat.mistral.ai/",
-  "Kimi":       "https://www.kimi.com/",
-  "Grok":       "https://grok.com/",
-  "OpenClaw":   DEFAULT_OPENCLAW_URL,
-};
+const services = createServices({
+  getUserDataPath: () => app.getPath("userData"),
+  openclawUrl: DEFAULT_OPENCLAW_URL,
+  broadcast: (status) => {
+    if (win && !win.isDestroyed()) win.webContents.send("services-status", status);
+  },
+});
+
+const tabs = new Proxy({}, {
+  get(_target, name) {
+    if (typeof name !== "string") return undefined;
+    return services.url(name) || undefined;
+  },
+  has(_target, name) {
+    return typeof name === "string" && services.known(name);
+  },
+  ownKeys() {
+    return services.ids();
+  },
+  getOwnPropertyDescriptor(_target, name) {
+    if (typeof name !== "string" || !services.known(name)) return undefined;
+    return { configurable: true, enumerable: true, value: services.url(name) };
+  },
+});
 
 function getAllSessions() {
-  return Object.keys(tabs).map(name => session.fromPartition(`persist:${name}`));
+  return services.accounts().map((account) => session.fromPartition(account.partition));
 }
 
 function buildViewPreferences(name) {
   return {
-    partition: `persist:${name}`,
+    partition: partitionForTab(name),
     contextIsolation: true,
     nodeIntegration: false,
+    spellcheck: true,
   };
 }
 
@@ -77,24 +97,44 @@ function getExtensionsApi(targetSession) {
   return targetSession.extensions ?? targetSession;
 }
 
-async function applyProxyToAll(config) {
-  await Promise.all(getAllSessions().map(s => s.setProxy(config)));
+let tunnelProxy = null;
+let hubProxyPhase = "direct";
+
+function proxyForRoute(route) {
+  if (route === "direct") return { proxyRules: "" };
+  if (hubProxyPhase === "dropped") return buildBlackholeProxyConfig();
+  if (hubProxyPhase === "tunnel" && tunnelProxy) return tunnelProxy;
+  return { proxyRules: "" };
 }
 
-async function closeHubConnections() {
-  await Promise.all(getAllSessions().map((targetSession) => targetSession.closeAllConnections().catch(() => {})));
+async function applyRoutedProxy() {
+  const accounts = services.accounts();
+  await Promise.all(accounts.map((account) => (
+    session.fromPartition(account.partition).setProxy(proxyForRoute(account.route))
+  )));
+  await Promise.all(accounts.map((account) => (
+    session.fromPartition(account.partition).closeAllConnections().catch(() => {})
+  )));
 }
 
 async function applyHubProxy(config) {
+  tunnelProxy = config;
+  hubProxyPhase = "tunnel";
   proxyConfig = config;
-  await applyProxyToAll(config);
-  await closeHubConnections();
+  await applyRoutedProxy();
 }
 
 async function clearHubProxy() {
+  tunnelProxy = null;
+  hubProxyPhase = "direct";
   proxyConfig = null;
-  await applyProxyToAll({ proxyRules: "" });
-  await closeHubConnections();
+  await applyRoutedProxy();
+}
+
+async function applyDroppedHubProxy() {
+  hubProxyPhase = "dropped";
+  proxyConfig = buildBlackholeProxyConfig();
+  await applyRoutedProxy();
 }
 
 const wireguard = createWireguard({
@@ -103,6 +143,7 @@ const wireguard = createWireguard({
   lookupPartition: "persist:ChatGPT",
   applyProxy: applyHubProxy,
   clearProxy: clearHubProxy,
+  applyDroppedProxy: applyDroppedHubProxy,
   broadcast: (status) => {
     if (win && !win.isDestroyed()) win.webContents.send("wg-status", status);
   },
@@ -113,6 +154,7 @@ const tasks = createTasks({
   isKnownService: (name) => Object.prototype.hasOwnProperty.call(tabs, name),
   isServiceUrl: (name, url) => isServiceUrlForTab(name, url),
   listServices: () => Object.keys(tabs),
+  accountFor: (name) => services.activeAccountId(name),
   broadcast: (status) => {
     if (win && !win.isDestroyed()) win.webContents.send("tasks-status", status);
   },
@@ -124,6 +166,266 @@ function rememberTabUrl(name, url) {
   if (isAuthPopupUrl(url) && !isServiceUrlForTab(name, url)) return;
   tabState[name] = { url };
   void tasks.noteUrl(name, url);
+}
+
+const parkedViews = new Map<string, any>();
+const hookedPartitions = new Set();
+let compareOpen = false;
+let compareSlots = [];
+let compareFocus = null;
+let compareTaskId = null;
+let registeredHotkey = "";
+
+function partitionForTab(name) {
+  return services.partitionFor(name) || `persist:${name}`;
+}
+
+function accountKey(name) {
+  return `${name}\n${services.activeAccountId(name) || "default"}`;
+}
+
+function parkView(name) {
+  const view = views[name];
+  if (!view) return;
+  const key = view.accountKey || accountKey(name);
+  try { if (win && !win.isDestroyed()) win.removeBrowserView(view); } catch {}
+  parkedViews.set(key, view);
+  delete views[name];
+}
+
+function takeAccountView(name) {
+  const key = accountKey(name);
+  if (views[name] && views[name].accountKey === key && isViewUsable(views[name])) return views[name];
+  if (views[name]) parkView(name);
+  const parked = parkedViews.get(key);
+  if (parked && isViewUsable(parked)) {
+    parkedViews.delete(key);
+    views[name] = parked;
+    return parked;
+  }
+  return null;
+}
+
+function notifyReply(name) {
+  if (!Notification.isSupported()) return;
+  const note = new Notification({
+    title: "AI Hub",
+    body: `${name} has a reply on a task that is still Doing.`,
+  });
+  note.on("click", () => {
+    if (!win || win.isDestroyed()) return;
+    win.show();
+    switchTab(name);
+  });
+  note.show();
+}
+
+function hookPartition(partition, name) {
+  if (!partition || hookedPartitions.has(partition)) return;
+  hookedPartitions.add(partition);
+  const target = session.fromPartition(partition);
+  const languages = services.spellcheckLanguages();
+  if (languages.length) {
+    try { target.setSpellCheckerLanguages(languages); } catch {}
+  }
+  target.on("will-download", (_event, item) => {
+    const parent = win && !win.isDestroyed() ? win : undefined;
+    const filePath = dialog.showSaveDialogSync(parent, { defaultPath: item.getFilename() });
+    if (!filePath) {
+      item.cancel();
+      return;
+    }
+    item.setSavePath(filePath);
+  });
+  target.webRequest.onCompleted({ urls: ["https://*/*", "http://*/*"] }, (details) => {
+    if (!streamEnded(name, details)) return;
+    if (!shouldNoteTaskActivity(name)) return;
+    void tasks.noteActivity(name, services.activeAccountId(name)).then((result) => {
+      if (result && result.noted) notifyReply(name);
+    });
+  });
+}
+
+function applySpellcheck() {
+  const languages = services.spellcheckLanguages();
+  if (!languages.length) return;
+  for (const account of services.accounts()) {
+    try { session.fromPartition(account.partition).setSpellCheckerLanguages(languages); } catch {}
+  }
+}
+
+function changeZoom(name, delta, absolute?) {
+  const current = services.zoom(name) || 1;
+  const next = absolute == null ? current + delta : absolute;
+  void services.setZoom(name, next).then((status) => {
+    const row = status && status.services && status.services.find((item) => item.id === name);
+    const zoom = row ? row.zoom : next;
+    if (isViewUsable(views[name])) {
+      try { views[name].webContents.setZoomFactor(zoom); } catch {}
+    }
+  }).catch(() => {});
+}
+
+function attachViewChrome(webContents, name) {
+  webContents.on("before-input-event", (event, input) => {
+    if (!input || input.type !== "keyDown" || input.isAutoRepeat) return;
+    const mod = input.control || input.meta;
+    if (!mod || input.alt) return;
+    const key = String(input.key || "").toLowerCase();
+    if (key === "f") {
+      event.preventDefault();
+      if (win && !win.isDestroyed()) win.webContents.send("find-open");
+      return;
+    }
+    if (key === "=" || key === "+") {
+      event.preventDefault();
+      changeZoom(name, 0.1);
+    } else if (key === "-" || key === "_") {
+      event.preventDefault();
+      changeZoom(name, -0.1);
+    } else if (key === "0") {
+      event.preventDefault();
+      changeZoom(name, 0, 1);
+    }
+  });
+}
+
+function layoutCompare() {
+  if (!compareOpen || !win || win.isDestroyed()) return;
+  const [width, height] = win.getContentSize();
+  const count = compareSlots.length || 1;
+  const col = Math.floor(width / count);
+  compareSlots.forEach((slot, index) => {
+    if (!isViewUsable(slot.view)) return;
+    try { win.addBrowserView(slot.view); } catch {}
+    try {
+      slot.view.setBounds({
+        x: index * col,
+        y: topBarHeight,
+        width: index === count - 1 ? width - index * col : col,
+        height: Math.max(0, height - topBarHeight),
+      });
+    } catch {}
+  });
+}
+
+function closeCompare(options: any = {}) {
+  if (!compareOpen && !compareSlots.length) return;
+  compareOpen = false;
+  compareFocus = null;
+  compareTaskId = null;
+  for (const slot of compareSlots) {
+    try { if (win && !win.isDestroyed()) win.removeBrowserView(slot.view); } catch {}
+  }
+  compareSlots = [];
+  if (win && !win.isDestroyed()) win.webContents.send("compare-status", { open: false });
+  if (options.restore !== false && activeTab && tabs[activeTab]) switchTab(activeTab);
+}
+
+async function startCompare(taskId) {
+  const status = tasks.list();
+  const task = (status.tasks || []).find((item) => item.id === taskId);
+  if (!task) return { success: false, error: "Unknown task" };
+  const picks = (task.assignments || []).slice(0, 3);
+  if (picks.length < 2) return { success: false, error: "Choose at least two services" };
+  if (isBoardWorkspace()) {
+    try { await tasks.setWorkspace("chat"); } catch {}
+  }
+  for (const slot of compareSlots) {
+    try { if (win && !win.isDestroyed()) win.removeBrowserView(slot.view); } catch {}
+  }
+  compareSlots = [];
+  compareTaskId = task.id;
+  for (const assignment of picks) {
+    services.useAccount(assignment.service, assignment.accountId || "default");
+    takeAccountView(assignment.service);
+    if (!isViewUsable(views[assignment.service])) {
+      const saved = acceptedServiceUrl(assignment.service, assignment.url);
+      createTab(assignment.service, saved || tabs[assignment.service], { background: true });
+    }
+    const view = views[assignment.service];
+    if (!isViewUsable(view)) continue;
+    if (!view.compareFocusHooked) {
+      view.compareFocusHooked = true;
+      view.webContents.on("focus", () => { compareFocus = view.webContents; });
+    }
+    compareSlots.push({ service: assignment.service, view });
+  }
+  if (win && !win.isDestroyed()) {
+    try {
+      const current = win.getBrowserView();
+      if (current) win.removeBrowserView(current);
+    } catch {}
+  }
+  compareOpen = compareSlots.length >= 2;
+  if (!compareOpen) return { success: false, error: "Couldn't open those services" };
+  layoutCompare();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("compare-status", { open: true, title: task.title, taskId: task.id });
+  }
+  return { success: true };
+}
+
+function insertCompareText() {
+  const status = tasks.list();
+  const task = (status.tasks || []).find((item) => item.id === compareTaskId);
+  if (!task) return { success: false, error: "Unknown task" };
+  const text = task.prompt || task.title || "";
+  const contents = compareFocus && !compareFocus.isDestroyed()
+    ? compareFocus
+    : (compareSlots[0] && isViewUsable(compareSlots[0].view) ? compareSlots[0].view.webContents : null);
+  if (!contents || contents.isDestroyed()) return { success: false, error: "Click a chat first" };
+  try {
+    contents.focus();
+    contents.insertText(text);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+  return { success: true };
+}
+
+function registerHotkey() {
+  if (registeredHotkey) {
+    try { globalShortcut.unregister(registeredHotkey); } catch {}
+    registeredHotkey = "";
+  }
+  const accel = services.hotkey();
+  if (!accel) return;
+  const ok = globalShortcut.register(accel, () => {
+    if (!win || win.isDestroyed()) return;
+    const text = clipboard.readText();
+    win.show();
+    win.focus();
+    const name = activeTab && tabs[activeTab] ? activeTab : "ChatGPT";
+    switchTab(name);
+    const view = views[name];
+    if (!text || !isViewUsable(view)) return;
+    try {
+      view.webContents.focus();
+      view.webContents.insertText(text);
+    } catch {}
+  });
+  if (ok) registeredHotkey = accel;
+}
+
+let autoUpdater = null;
+
+function setupUpdates() {
+  if (!app.isPackaged) return;
+  try {
+    autoUpdater = require("electron-updater").autoUpdater;
+  } catch {
+    autoUpdater = null;
+    return;
+  }
+  autoUpdater.autoDownload = false;
+  autoUpdater.on("update-available", (info) => {
+    if (win && !win.isDestroyed()) win.webContents.send("update-available", { version: info && info.version });
+  });
+  autoUpdater.on("update-downloaded", () => {
+    if (win && !win.isDestroyed()) win.webContents.send("update-downloaded");
+  });
+  autoUpdater.checkForUpdates().catch(() => {});
 }
 
 // ── Extension registry ──────────────────────────────────────────────────────
@@ -416,7 +718,7 @@ function createWindow() {
     trafficLightPosition: { x: 14, y: 20 },
     backgroundColor: themeColor(),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     }
@@ -432,14 +734,22 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => {
     void startTunnelThenChats();
   });
-  win.loadFile("index.html");
+  win.loadFile(path.join(__dirname, "../renderer/index.html"));
+  win.webContents.on("did-finish-load", () => {
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send("services-status", services.list());
+  });
 
   win.on("resize", () => {
+    if (compareOpen) {
+      layoutCompare();
+      return;
+    }
     if (isBoardWorkspace()) return;
     if (activeTab && isViewUsable(views[activeTab])) resizeView(views[activeTab]);
   });
   win.on("close", (event) => {
-    if (forceExit.started) return;
+    if (forceExitStarted) return;
     event.preventDefault();
     forceExit();
   });
@@ -696,13 +1006,13 @@ function shouldOpenInSystemBrowser(tabName, url) {
   }
 }
 
+const externalOpenRecent = new Map();
+
 function openInSystemBrowser(url) {
   const now = Date.now();
-  if (!openInSystemBrowser.recent) openInSystemBrowser.recent = new Map();
-  const recent = openInSystemBrowser.recent;
-  const previous = recent.get(url);
+  const previous = externalOpenRecent.get(url);
   if (previous && now - previous < 750) return;
-  recent.set(url, now);
+  externalOpenRecent.set(url, now);
 
   try {
     const pending = shell.openExternal(url);
@@ -834,7 +1144,7 @@ function destroyTabView(name) {
 }
 
 async function resetTabSession(name) {
-  const targetSession = session.fromPartition(`persist:${name}`);
+  const targetSession = session.fromPartition(partitionForTab(name));
 
   destroyTabView(name);
 
@@ -932,7 +1242,7 @@ function openPopupWindow(tabName, url) {
     rememberTabUrl(tabName, navigatedUrl);
 
     try {
-      const targetSession = session.fromPartition(`persist:${tabName}`);
+      const targetSession = session.fromPartition(partitionForTab(tabName));
       await targetSession.cookies.flushStore?.();
       await targetSession.flushStorageData?.();
     } catch {}
@@ -965,11 +1275,12 @@ function openPopupWindow(tabName, url) {
   popup.loadURL(url);
 }
 
-function createTab(name, url = getTabUrl(name), options = {}) {
+function createTab(name, url = getTabUrl(name), options: any = {}) {
   const view = new BrowserView({
     webPreferences: buildViewPreferences(name)
   });
   views[name] = view;
+  view.accountKey = accountKey(name);
   paintViewTheme(view);
   attachGuestTheme(view.webContents);
   // Board mode keeps the view in `views` but must not put it back on the window.
@@ -986,12 +1297,13 @@ function createTab(name, url = getTabUrl(name), options = {}) {
     if (activeTab === name) activeTab = null;
   });
 
-  if (proxyConfig) {
-    session.fromPartition(`persist:${name}`).setProxy(proxyConfig);
-  }
+  hookPartition(partitionForTab(name), name);
+  session.fromPartition(partitionForTab(name)).setProxy(proxyForRoute(services.route(name))).catch(() => {});
+  try { view.webContents.setZoomFactor(services.zoom(name) || 1); } catch {}
 
   attachReloadShortcuts(view.webContents);
   attachBoardShortcut(view.webContents);
+  attachViewChrome(view.webContents, name);
   ignoreUnloadBlock(view.webContents);
   let titleNotedAt = 0;
   view.webContents.on("page-title-updated", () => {
@@ -999,7 +1311,9 @@ function createTab(name, url = getTabUrl(name), options = {}) {
     const now = Date.now();
     if (now - titleNotedAt < 8000) return;
     titleNotedAt = now;
-    void tasks.noteActivity(name);
+    void tasks.noteActivity(name, services.activeAccountId(name)).then((result) => {
+      if (result && result.noted) notifyReply(name);
+    });
   });
 
   // Cross-document main-frame loads only. Subframe and same-document
@@ -1139,6 +1453,8 @@ function applyOpenClawSnapshot(status) {
 
 function switchTab(name) {
   if (!tabs[name]) return;
+  if (compareOpen) closeCompare({ restore: false });
+  takeAccountView(name);
   const board = isBoardWorkspace();
   if (name === OPENCLAW_TAB) {
     activeTab = name;
@@ -1211,6 +1527,7 @@ function applyWorkspaceView(status) {
   if (!win || win.isDestroyed()) return;
   const mode = status && status.workspace === "board" ? "board" : "chat";
   if (mode === "board") {
+    if (compareOpen) closeCompare({ restore: false });
     if (activeTab) detachView(activeTab);
     return;
   }
@@ -1243,6 +1560,8 @@ function showTaskService(status) {
   if (isBoardWorkspace()) return;
   const service = status.capture.service;
   if (!tabs[service]) return;
+  if (status.capture.accountId) services.useAccount(service, status.capture.accountId);
+  takeAccountView(service);
   // OpenClaw must open through the Gateway snapshot, never a stored task URL.
   if (service === OPENCLAW_TAB) {
     switchTab(OPENCLAW_TAB);
@@ -1272,7 +1591,7 @@ function showTaskService(status) {
 let tunnelGateStarted = false;
 let tunnelGateSettled = false;
 
-function sendTunnelGate(active, name) {
+function sendTunnelGate(active, name?) {
   if (!win || win.isDestroyed()) return;
   win.webContents.send("tunnel-gate", { active: Boolean(active), name: name || "" });
 }
@@ -1442,7 +1761,7 @@ async function copyGoogleCookies(fromSession, toSession) {
   const cookies = await fromSession.cookies.get({});
   for (const cookie of cookies) {
     if (!isGoogleHost(cookie.domain) || !cookie.name || !cookie.value) continue;
-    const payload = {
+    const payload: any = {
       url: cookieUrl(cookie),
       name: cookie.name,
       value: cookie.value,
@@ -1547,7 +1866,7 @@ async function applySharedGoogle() {
   const book = readGoogleBook();
   const names = targetsForApply(Object.keys(tabs), book.overrides);
   for (const name of names) {
-    const target = session.fromPartition(`persist:${name}`);
+    const target = session.fromPartition(partitionForTab(name));
     await clearGoogleCookies(target);
     await copyGoogleCookies(source, target);
     openServiceForGoogle(name);
@@ -1561,6 +1880,129 @@ ipcMain.on("switch-tab", (_event, tabName) => {
   void handleSwitchTab(tabName);
 });
 
+handle("services-list", () => services.list());
+
+handle("services-set-route", async (_event, payload) => {
+  try { return { success: true, status: await services.setRoute(payload && payload.id, payload && payload.route) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-set-hidden", async (_event, payload) => {
+  try { return { success: true, status: await services.setHidden(payload && payload.id, payload && payload.hidden) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-reorder", async (_event, ids) => {
+  try { return { success: true, status: await services.reorder(ids) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-add-account", async (_event, payload) => {
+  try {
+    const status = await services.addAccount(payload && payload.id, payload && payload.label);
+    const id = payload && payload.id;
+    if (id && tabs[id]) switchTab(id);
+    return { success: true, status };
+  } catch (err) {
+    return { success: false, error: err.message, status: services.list() };
+  }
+});
+
+handle("services-set-account", async (_event, payload) => {
+  try {
+    const status = await services.setActiveAccount(payload && payload.id, payload && payload.accountId);
+    const id = payload && payload.id;
+    if (id && tabs[id]) switchTab(id);
+    return { success: true, status };
+  } catch (err) {
+    return { success: false, error: err.message, status: services.list() };
+  }
+});
+
+handle("services-set-label", async (_event, payload) => {
+  try {
+    return { success: true, status: await services.setAccountLabel(payload && payload.id, payload && payload.accountId, payload && payload.label) };
+  } catch (err) {
+    return { success: false, error: err.message, status: services.list() };
+  }
+});
+
+handle("services-remove-account", async (_event, payload) => {
+  try { return { success: true, status: await services.removeAccount(payload && payload.id, payload && payload.accountId) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-add-custom", async (_event, payload) => {
+  try { return { success: true, status: await services.addCustom(payload && payload.name, payload && payload.url) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-remove-custom", async (_event, id) => {
+  try { return { success: true, status: await services.removeCustom(id) }; }
+  catch (err) { return { success: false, error: err.message, status: services.list() }; }
+});
+
+handle("services-set-hotkey", async (_event, hotkey) => {
+  try {
+    const status = await services.setHotkey(hotkey);
+    registerHotkey();
+    return { success: true, status };
+  } catch (err) {
+    return { success: false, error: err.message, status: services.list() };
+  }
+});
+
+handle("services-set-spellcheck", async (_event, languages) => {
+  try {
+    const status = await services.setSpellcheckLanguages(languages);
+    applySpellcheck();
+    return { success: true, status };
+  } catch (err) {
+    return { success: false, error: err.message, status: services.list() };
+  }
+});
+
+handle("compare-start", async (_event, taskId) => {
+  try { return await startCompare(taskId); }
+  catch (err) { return { success: false, error: err.message }; }
+});
+
+handle("compare-insert", () => insertCompareText());
+
+handle("compare-stop", () => {
+  closeCompare({ restore: true });
+  return { success: true };
+});
+
+handle("find-in-page", (_event, text, findNext) => {
+  const view = activeTab && views[activeTab];
+  if (!isViewUsable(view) || !text) return { success: false };
+  view.webContents.findInPage(String(text), { forward: true, findNext: Boolean(findNext) });
+  return { success: true };
+});
+
+handle("find-stop", () => {
+  const view = activeTab && views[activeTab];
+  if (isViewUsable(view)) view.webContents.stopFindInPage("clearSelection");
+  return { success: true };
+});
+
+handle("update-download", async () => {
+  if (!autoUpdater) return { success: false, error: "Updates are available in the installed app" };
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+handle("update-install", () => {
+  if (!autoUpdater) return { success: false, error: "Updates are available in the installed app" };
+  autoUpdater.quitAndInstall();
+  return { success: true };
+});
+
 ipcMain.on("set-content-theme", (_event, theme) => {
   applyContentTheme(theme);
 });
@@ -1569,27 +2011,31 @@ ipcMain.on("set-topbar-height", (_event, h) => {
   const next = Number(h);
   if (!Number.isFinite(next) || next < 0 || next > 4000) return;
   topBarHeight = next;
+  if (compareOpen) {
+    layoutCompare();
+    return;
+  }
   if (isBoardWorkspace()) return;
   if (activeTab && isViewUsable(views[activeTab])) resizeView(views[activeTab]);
 });
 
-ipcMain.handle("set-proxy", async (_event, config) => {
+handle("set-proxy", async (_event, config) => {
   await wireguard.stopForExternalProxy();
   await applyHubProxy(config);
   return { success: true };
 });
 
-ipcMain.handle("clear-proxy", async () => {
+handle("clear-proxy", async () => {
   await wireguard.stopForExternalProxy();
   await clearHubProxy();
   return { success: true };
 });
 
-ipcMain.handle("wg-list", () => wireguard.list());
+handle("wg-list", () => wireguard.list());
 
-ipcMain.handle("wg-import", () => wireguard.importConfigs());
+handle("wg-import", () => wireguard.importConfigs());
 
-ipcMain.handle("wg-remove", async (_event, id) => {
+handle("wg-remove", async (_event, id) => {
   try {
     return await wireguard.remove(id);
   } catch (err) {
@@ -1597,7 +2043,7 @@ ipcMain.handle("wg-remove", async (_event, id) => {
   }
 });
 
-ipcMain.handle("wg-connect", async (_event, id) => {
+handle("wg-connect", async (_event, id) => {
   try {
     const status = await wireguard.connect(id);
     return { success: true, status };
@@ -1606,9 +2052,9 @@ ipcMain.handle("wg-connect", async (_event, id) => {
   }
 });
 
-ipcMain.handle("tunnel-cancel", () => cancelTunnelStartup());
+handle("tunnel-cancel", () => cancelTunnelStartup());
 
-ipcMain.handle("wg-disconnect", async () => {
+handle("wg-disconnect", async () => {
   try {
     return await wireguard.disconnect();
   } catch (err) {
@@ -1616,12 +2062,12 @@ ipcMain.handle("wg-disconnect", async () => {
   }
 });
 
-ipcMain.handle("openclaw-status", async () => {
+handle("openclaw-status", async () => {
   const status = await inspectOpenClaw();
   return applyOpenClawSnapshot(status);
 });
 
-ipcMain.handle("openclaw-start", async () => {
+handle("openclaw-start", async () => {
   const result = await startOpenClawGateway();
   applyOpenClawSnapshot(result.status);
   return {
@@ -1632,7 +2078,7 @@ ipcMain.handle("openclaw-start", async () => {
   };
 });
 
-ipcMain.handle("openclaw-dashboard", async () => {
+handle("openclaw-dashboard", async () => {
   const result = await openClawDashboard();
   if (!result.url) {
     return { success: false, error: result.error || "No dashboard URL", url: result.cleanUrl || null };
@@ -1657,7 +2103,7 @@ ipcMain.on("reload-active-tab", (_event, ignoreCache) => {
   reloadActiveTab(Boolean(ignoreCache));
 });
 
-ipcMain.handle("reset-tab-session", async (_event, tabName) => {
+handle("reset-tab-session", async (_event, tabName) => {
   try {
     if (!tabs[tabName]) throw new Error("Unknown tab");
     await resetTabSession(tabName);
@@ -1667,7 +2113,7 @@ ipcMain.handle("reset-tab-session", async (_event, tabName) => {
   }
 });
 
-ipcMain.handle("pick-extension", async () => {
+handle("pick-extension", async () => {
   const result = await dialog.showOpenDialog(win, {
     title: "Select unpacked Chrome extension folder",
     properties: ["openDirectory"],
@@ -1711,7 +2157,7 @@ ipcMain.handle("pick-extension", async () => {
   }
 });
 
-ipcMain.handle("install-extension", async (_event, extensionId) => {
+handle("install-extension", async (_event, extensionId) => {
   try {
     return await withRebuiltViews(() => installExtensionById(extensionId));
   } catch (err) {
@@ -1719,11 +2165,11 @@ ipcMain.handle("install-extension", async (_event, extensionId) => {
   }
 });
 
-ipcMain.handle("list-extensions", async () => {
+handle("list-extensions", async () => {
   return loadRegistry();
 });
 
-ipcMain.handle("toggle-extension", async (_event, extensionId, enabled) => {
+handle("toggle-extension", async (_event, extensionId, enabled) => {
   try {
     const extensions = await withRebuiltViews(() => setExtensionEnabled(extensionId, enabled));
     return { success: true, extensions };
@@ -1732,7 +2178,7 @@ ipcMain.handle("toggle-extension", async (_event, extensionId, enabled) => {
   }
 });
 
-ipcMain.handle("uninstall-extension", async (_event, extensionId) => {
+handle("uninstall-extension", async (_event, extensionId) => {
   try {
     const extensions = await withRebuiltViews(() => uninstallExtension(extensionId));
     return { success: true, extensions };
@@ -1743,7 +2189,7 @@ ipcMain.handle("uninstall-extension", async (_event, extensionId) => {
 
 ipcMain.on("open-external", (_event, url) => shell.openExternal(url));
 
-ipcMain.handle("tasks-list", () => {
+handle("tasks-list", () => {
   try {
     return tasks.list();
   } catch (err) {
@@ -1751,31 +2197,31 @@ ipcMain.handle("tasks-list", () => {
   }
 });
 
-ipcMain.handle("tasks-create", async (_event, payload) => {
+handle("tasks-create", async (_event, payload) => {
   try { return await tasks.create(payload); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-update", async (_event, payload) => {
+handle("tasks-update", async (_event, payload) => {
   try { return await tasks.update(payload); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-delete", async (_event, id) => {
+handle("tasks-delete", async (_event, id) => {
   try { return await tasks.delete(id); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-set-status", async (_event, payload) => {
+handle("tasks-set-status", async (_event, payload) => {
   try { return await tasks.setStatus(payload); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-add-assignment", async (_event, payload) => {
+handle("tasks-add-assignment", async (_event, payload) => {
   try { return await tasks.addAssignment(payload); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-remove-assignment", async (_event, payload) => {
+handle("tasks-remove-assignment", async (_event, payload) => {
   try { return await tasks.removeAssignment(payload); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("tasks-open", async (_event, payload) => {
+handle("tasks-open", async (_event, payload) => {
   try {
     const result = await tasks.open(payload);
     if (result && result.success) showTaskService(result.status);
@@ -1785,7 +2231,7 @@ ipcMain.handle("tasks-open", async (_event, payload) => {
   }
 });
 
-ipcMain.handle("tasks-set-workspace", async (_event, workspace) => {
+handle("tasks-set-workspace", async (_event, workspace) => {
   try {
     return await commitWorkspace(workspace);
   } catch (err) {
@@ -1793,7 +2239,7 @@ ipcMain.handle("tasks-set-workspace", async (_event, workspace) => {
   }
 });
 
-ipcMain.handle("tasks-toggle-workspace", async () => {
+handle("tasks-toggle-workspace", async () => {
   try {
     return await toggleWorkspace();
   } catch (err) {
@@ -1801,20 +2247,20 @@ ipcMain.handle("tasks-toggle-workspace", async () => {
   }
 });
 
-ipcMain.handle("tasks-clear-capture", async () => {
+handle("tasks-clear-capture", async () => {
   try { return await tasks.clearCapture(); } catch (err) { return taskIpcError(err); }
 });
 
-ipcMain.handle("google-status", () => googleSnapshot());
+handle("google-status", () => googleSnapshot());
 
-ipcMain.handle("google-sign-in", async () => {
+handle("google-sign-in", async () => {
   openGoogleChooser(GOOGLE_PARTITION);
   return googleSnapshot();
 });
 
-ipcMain.handle("google-apply-all", () => applySharedGoogle());
+handle("google-apply-all", () => applySharedGoogle());
 
-ipcMain.handle("google-use-shared", async (_event, service) => {
+handle("google-use-shared", async (_event, service) => {
   if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
   const book = readGoogleBook();
   delete book.overrides[service];
@@ -1822,7 +2268,7 @@ ipcMain.handle("google-use-shared", async (_event, service) => {
   const source = googleSession();
   const cookies = await source.cookies.get({});
   if (hasGoogleSession(cookies)) {
-    const target = session.fromPartition(`persist:${service}`);
+    const target = session.fromPartition(partitionForTab(service));
     await clearGoogleCookies(target);
     await copyGoogleCookies(source, target);
     openServiceForGoogle(service);
@@ -1830,14 +2276,14 @@ ipcMain.handle("google-use-shared", async (_event, service) => {
   return publishGoogle();
 });
 
-ipcMain.handle("google-use-other", async (_event, service) => {
+handle("google-use-other", async (_event, service) => {
   if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
   const book = readGoogleBook();
   book.overrides[service] = true;
   writeGoogleBook(book);
-  const target = session.fromPartition(`persist:${service}`);
+  const target = session.fromPartition(partitionForTab(service));
   await clearGoogleCookies(target);
-  openGoogleChooser(`persist:${service}`);
+  openGoogleChooser(partitionForTab(service));
   return publishGoogle();
 });
 
@@ -1857,8 +2303,10 @@ app.whenReady().then(async () => {
   try { session.fromPartition(GOOGLE_PARTITION).setUserAgent(browserUserAgent); } catch {}
 
   createWindow();
+  registerHotkey();
+  setupUpdates();
 
-  const iconPath = path.join(__dirname, "assets", "icon.png");
+  const iconPath = path.join(__dirname, "../../assets/icon.png");
   if (process.platform === "darwin" && fs.existsSync(iconPath) && app.dock) {
     app.dock.setIcon(iconPath);
   }
@@ -1887,10 +2335,17 @@ function ignoreUnloadBlock(webContents) {
   });
 }
 
+let forceExitStarted = false;
+
 function forceExit() {
-  if (forceExit.started) return;
-  forceExit.started = true;
+  if (forceExitStarted) return;
+  forceExitStarted = true;
   try {
+    try { if (registeredHotkey) globalShortcut.unregister(registeredHotkey); } catch {}
+    for (const view of parkedViews.values()) {
+      try { view.webContents.destroy(); } catch {}
+    }
+    parkedViews.clear();
     try { wireguard.kill(); } catch {}
     for (const popup of popupWindows) {
       try { popup.destroy(); } catch {}
@@ -1922,7 +2377,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-  if (forceExit.started) return;
+  if (forceExitStarted) return;
   event.preventDefault();
   forceExit();
 });
@@ -1930,3 +2385,7 @@ app.on("before-quit", (event) => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+
+if (process.env.AI_HUB_TEST === "1") {
+  global.__aiHubTest = { shouldOpenInSystemBrowser };
+}

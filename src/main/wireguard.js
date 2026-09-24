@@ -8,8 +8,11 @@ const { spawn } = require("child_process");
 
 const INSTALL_HINT = "brew install wireproxy";
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RUN_CONF_RE = /^run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.conf$/i;
 const MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024;
 const LOOKUP_URL = "https://ipwho.is/";
+const WIREPROXY_PIN = require("./wireproxy-checksums.json");
+const ENCRYPTION_UNAVAILABLE = "Couldn't encrypt the WireGuard config. Encryption is not available on this computer.";
 
 function isId(value) {
   return typeof value === "string" && ID_RE.test(value);
@@ -107,12 +110,67 @@ function buildSocksPac(port) {
   ].join("\n");
 }
 
-function buildProxyConfig(port) {
+function pacProxyConfig(source) {
   // Electron 38 ProxyConfig (electron.d.ts): mode "pac_script" and pacScript
   // as the PAC file URL. A data: URL is that URL, inlined.
   const pacScript = "data:application/x-ns-proxy-autoconfig;base64,"
-    + Buffer.from(buildSocksPac(port), "utf8").toString("base64");
+    + Buffer.from(source, "utf8").toString("base64");
   return { mode: "pac_script", pacScript };
+}
+
+function buildProxyConfig(port) {
+  return pacProxyConfig(buildSocksPac(port));
+}
+
+function buildBlackholePac() {
+  // Port 1 is closed. A dead proxy fails the request instead of falling through
+  // to the real network after wireproxy exits.
+  return [
+    "function FindProxyForURL(url, host) {",
+    "  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return 'DIRECT';",
+    "  return 'SOCKS5 127.0.0.1:1';",
+    "}",
+    "",
+  ].join("\n");
+}
+
+function buildBlackholeProxyConfig() {
+  return pacProxyConfig(buildBlackholePac());
+}
+
+function electronCipher() {
+  return {
+    available() {
+      try {
+        const { safeStorage } = require("electron");
+        return Boolean(safeStorage && safeStorage.isEncryptionAvailable());
+      } catch {
+        return false;
+      }
+    },
+    encrypt(text) {
+      const { safeStorage } = require("electron");
+      return safeStorage.encryptString(String(text));
+    },
+    decrypt(buffer) {
+      const { safeStorage } = require("electron");
+      return safeStorage.decryptString(buffer);
+    },
+  };
+}
+
+function wireproxyArchiveSha256(asset) {
+  const table = WIREPROXY_PIN && WIREPROXY_PIN.archives;
+  const value = table && typeof table[asset] === "string" ? table[asset].trim().toLowerCase() : "";
+  return /^[a-f0-9]{64}$/.test(value) ? value : "";
+}
+
+function assertWireproxyArchive(asset, archive) {
+  const expected = wireproxyArchiveSha256(asset);
+  if (!expected) throw new Error("No pinned hash for this wireproxy build");
+  if (!Buffer.isBuffer(archive)) throw new Error("wireproxy download hash did not match");
+  const actual = crypto.createHash("sha256").update(archive).digest("hex");
+  if (actual !== expected) throw new Error("wireproxy download hash did not match");
 }
 
 function safeCountryCode(value) {
@@ -137,15 +195,18 @@ function wireproxyAssetName(platformName, archName) {
   if (platformName === "darwin" && archName === "arm64") return "wireproxy_darwin_arm64.tar.gz";
   if (platformName === "darwin" && archName === "x64") return "wireproxy_darwin_amd64.tar.gz";
   if (platformName === "win32" && archName === "x64") return "wireproxy_windows_amd64.tar.gz";
+  if (platformName === "linux" && archName === "x64") return "wireproxy_linux_amd64.tar.gz";
+  if (platformName === "linux" && archName === "arm64") return "wireproxy_linux_arm64.tar.gz";
   return null;
 }
 
 function wireproxyDownloadUrls(platformName, archName) {
   const asset = wireproxyAssetName(platformName, archName);
-  if (!asset) return [];
+  const version = WIREPROXY_PIN && WIREPROXY_PIN.version;
+  if (!asset || typeof version !== "string" || !version) return [];
   return [
-    `https://github.com/pufferffish/wireproxy/releases/latest/download/${asset}`,
-    `https://github.com/windtf/wireproxy/releases/latest/download/${asset}`,
+    `https://github.com/pufferffish/wireproxy/releases/download/${version}/${asset}`,
+    `https://github.com/windtf/wireproxy/releases/download/${version}/${asset}`,
   ];
 }
 
@@ -331,6 +392,10 @@ function createWireguard(options) {
   const platform = options.platform || process.platform;
   const arch = options.arch || process.arch;
   const lookupExit = options.lookupExitLocation || ((partition) => lookupExitLocation(partition));
+  const cipher = options.cipher || electronCipher();
+  const applyDroppedProxy = options.applyDroppedProxy || (async () => {});
+  const allocatePort = options.getFreePort || getFreePort;
+  const waitForPort = options.waitForLocalPort || waitForLocalPort;
 
   let profiles = [];
   let connectedId = null;
@@ -345,6 +410,7 @@ function createWireguard(options) {
   let connectSerial = 0;
   let aborting = false;
   let skipAutoConnect = false;
+  let materializedId = null;
   let chain = Promise.resolve();
 
   function wireguardDir() {
@@ -367,6 +433,18 @@ function createWireguard(options) {
     return path.join(wireguardDir(), `${id}.conf`);
   }
 
+  function encryptedConfFile(id) {
+    return path.join(wireguardDir(), `${id}.conf.enc`);
+  }
+
+  function runConfName(id) {
+    return `run-${id}.conf`;
+  }
+
+  function runConfFile(id) {
+    return path.join(wireguardDir(), runConfName(id));
+  }
+
   function binaryFile() {
     return path.join(binDir(), platform === "win32" ? "wireproxy.exe" : "wireproxy");
   }
@@ -379,6 +457,74 @@ function createWireguard(options) {
   function chmodPrivate(file) {
     if (platform === "win32") return;
     try { fs.chmodSync(file, 0o600); } catch {}
+  }
+
+  function encryptionAvailable() {
+    try { return cipher.available() === true; } catch { return false; }
+  }
+
+  function wipeRunConf(id) {
+    if (!isId(id)) return;
+    try { fs.unlinkSync(runConfFile(id)); } catch {}
+  }
+
+  function wipeRunFiles() {
+    let names = [];
+    try { names = fs.readdirSync(wireguardDir()); } catch { return; }
+    for (const name of names) {
+      if (!RUN_CONF_RE.test(name)) continue;
+      try { fs.unlinkSync(path.join(wireguardDir(), name)); } catch {}
+    }
+  }
+
+  function writeEncrypted(id, text) {
+    if (!encryptionAvailable()) throw new Error(ENCRYPTION_UNAVAILABLE);
+    const encrypted = cipher.encrypt(String(text));
+    const body = Buffer.isBuffer(encrypted) ? encrypted : Buffer.from(encrypted);
+    if (!body.length) throw new Error("Couldn't encrypt the WireGuard config.");
+    ensureDirs();
+    const dest = encryptedConfFile(id);
+    const tmp = `${dest}.tmp`;
+    fs.writeFileSync(tmp, body, { mode: 0o600 });
+    chmodPrivate(tmp);
+    fs.renameSync(tmp, dest);
+    chmodPrivate(dest);
+  }
+
+  function readDecrypted(id) {
+    const raw = fs.readFileSync(encryptedConfFile(id));
+    const text = cipher.decrypt(raw);
+    return typeof text === "string" ? text : Buffer.from(text).toString("utf8");
+  }
+
+  function materializeRunConf(id) {
+    const text = readDecrypted(id);
+    if (!text) throw new Error("Saved WireGuard config file is missing");
+    ensureDirs();
+    const dest = runConfFile(id);
+    fs.writeFileSync(dest, text, { mode: 0o600 });
+    chmodPrivate(dest);
+    materializedId = id;
+    return runConfName(id);
+  }
+
+  function releaseRunConf(id) {
+    wipeRunConf(id);
+    if (materializedId === id) materializedId = null;
+  }
+
+  function migratePlaintextConfigs() {
+    if (!encryptionAvailable()) return;
+    for (const entry of profiles) {
+      const plain = confFile(entry.id);
+      if (!fs.existsSync(plain)) continue;
+      if (!fs.existsSync(encryptedConfFile(entry.id))) {
+        const text = fs.readFileSync(plain);
+        if (text.includes(0)) continue;
+        writeEncrypted(entry.id, text.toString("utf8"));
+      }
+      try { fs.unlinkSync(plain); } catch {}
+    }
   }
 
   function load() {
@@ -398,6 +544,9 @@ function createWireguard(options) {
       persistedConnectedId = null;
       skipAutoConnect = false;
     }
+    wipeRunFiles();
+    materializedId = null;
+    try { migratePlaintextConfigs(); } catch {}
   }
 
   function save() {
@@ -443,6 +592,7 @@ function createWireguard(options) {
       countryCode: active ? (active.countryCode || null) : null,
       error: lastError,
       phase,
+      savedId: persistedConnectedId,
     };
   }
 
@@ -509,8 +659,9 @@ function createWireguard(options) {
   }
 
   async function downloadOfficialBinary(dest) {
+    const asset = wireproxyAssetName(platform, arch);
     const urls = wireproxyDownloadUrls(platform, arch);
-    if (!urls.length) {
+    if (!asset || !urls.length) {
       throw installError(`no official build for ${platform} ${arch}`);
     }
     let failure = null;
@@ -518,6 +669,7 @@ function createWireguard(options) {
       try {
         const archive = await downloadBuffer(url);
         if (!archive.length) throw new Error("download was empty");
+        assertWireproxyArchive(asset, archive);
         const files = extractTarGz(archive);
         const binary = pickBinary(files);
         if (!binary || !isPlausibleExecutable(binary, platform)) {
@@ -554,6 +706,7 @@ function createWireguard(options) {
 
   function haltProcess() {
     return new Promise((resolve) => {
+      releaseRunConf(materializedId);
       const proc = activeChild;
       activeChild = null;
       if (!proc || proc.exitCode !== null) {
@@ -611,15 +764,16 @@ function createWireguard(options) {
         stderrRef.failure = stderrRef.failure || exitText(code, stderrRef.text);
         return;
       }
+      const droppedId = connectedId;
+      releaseRunConf(droppedId);
       activeChild = null;
       connectedId = null;
       pendingId = null;
-      persistedConnectedId = null;
-      phase = "error";
+      phase = "dropped";
       lastError = exitText(code, stderrRef.text);
       save();
       Promise.resolve()
-        .then(() => clearProxy())
+        .then(() => applyDroppedProxy())
         .catch(() => {})
         .then(() => publish());
     });
@@ -664,7 +818,7 @@ function createWireguard(options) {
     if (aborting || quitting) return snapshot();
     const entry = isId(id) ? profiles.find((item) => item.id === id) : null;
     if (!entry) return failConnect(new Error("Unknown WireGuard config"), keepSaved);
-    if (!fs.existsSync(confFile(id))) {
+    if (!fs.existsSync(encryptedConfFile(id)) && !fs.existsSync(confFile(id))) {
       return failConnect(new Error("Saved WireGuard config file is missing"), keepSaved);
     }
     if (connectedId === id && activeChild && activeChild.exitCode === null && phase === "connected") {
@@ -681,7 +835,10 @@ function createWireguard(options) {
     try {
       binary = await resolveBinary();
     } catch (err) {
-      if (cancelled()) return snapshot();
+      if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
       if (connectedId && activeChild && activeChild.exitCode === null) {
         pendingId = null;
         phase = "connected";
@@ -693,11 +850,28 @@ function createWireguard(options) {
     }
 
     await haltProcess();
-    if (cancelled()) return snapshot();
+    if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
 
-    const port = await getFreePort();
+    const port = await allocatePort();
     ensureDirs();
-    const iniBody = buildWireproxyIni(`${id}.conf`, port);
+    let runName;
+    try {
+      if (!fs.existsSync(encryptedConfFile(id))) migratePlaintextConfigs();
+      if (!fs.existsSync(encryptedConfFile(id))) {
+        throw new Error("Saved WireGuard config file is missing");
+      }
+      runName = materializeRunConf(id);
+    } catch (err) {
+      if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
+      return failConnect(err, keepSaved);
+    }
+    const iniBody = buildWireproxyIni(runName, port);
     fs.writeFileSync(iniFile(), iniBody, { mode: 0o600 });
     chmodPrivate(iniFile());
 
@@ -717,17 +891,23 @@ function createWireguard(options) {
     watchProcess(proc, stderrRef);
 
     try {
-      await waitForLocalPort(port, () => {
+      await waitForPort(port, () => {
         if (stderrRef.failure) return stderrRef.failure;
         if (proc.exitCode !== null) return exitText(proc.exitCode, stderrRef.text);
         return null;
       });
     } catch (err) {
-      if (cancelled()) return snapshot();
+      if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
       return failConnect(err, keepSaved);
     }
 
-    if (cancelled()) return snapshot();
+    if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
     if (proc.exitCode !== null || stderrRef.failure || activeChild !== proc) {
       const message = stderrRef.failure
         || (proc.exitCode !== null ? exitText(proc.exitCode, stderrRef.text) : "App is quitting");
@@ -737,16 +917,25 @@ function createWireguard(options) {
     try {
       await applyProxy(buildProxyConfig(port));
     } catch (err) {
-      if (cancelled()) return snapshot();
+      if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
       return failConnect(err, keepSaved);
     }
 
-    if (cancelled()) return snapshot();
+    if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
     if (proc.exitCode !== null || activeChild !== proc) {
       return failConnect(new Error(stderrRef.failure || exitText(proc.exitCode, stderrRef.text)), keepSaved);
     }
 
-    if (cancelled()) return snapshot();
+    if (cancelled()) {
+        releaseRunConf(materializedId);
+        return snapshot();
+      }
     connectedId = id;
     pendingId = null;
     persistedConnectedId = id;
@@ -771,10 +960,7 @@ function createWireguard(options) {
     if (!parsed.ok) throw new Error(parsed.error);
     const id = crypto.randomUUID();
     const filename = safeFilename(path.basename(filePath)) || "wireguard.conf";
-    ensureDirs();
-    const dest = confFile(id);
-    fs.writeFileSync(dest, text, { mode: 0o600 });
-    chmodPrivate(dest);
+    writeEncrypted(id, text.toString("utf8"));
     profiles.push({
       id,
       name: displayNameFromFilename(filename),
@@ -842,7 +1028,9 @@ function createWireguard(options) {
         try { await clearProxy(); } catch {}
       }
       profiles = profiles.filter((entry) => entry.id !== id);
+      releaseRunConf(id);
       try { fs.unlinkSync(confFile(id)); } catch {}
+      try { fs.unlinkSync(encryptedConfFile(id)); } catch {}
       save();
       return { success: true, error: null, status: publish() };
     });
@@ -940,6 +1128,8 @@ function createWireguard(options) {
 
   function kill() {
     quitting = true;
+    wipeRunFiles();
+    materializedId = null;
     const proc = activeChild;
     activeChild = null;
     if (proc && proc.exitCode === null) {
@@ -965,6 +1155,30 @@ function createWireguard(options) {
     savedTunnel,
     cancelAutoConnect,
     kill,
+    addConfigText(filename, text) {
+      return enqueue(async () => {
+        load();
+        const raw = Buffer.isBuffer(text) ? text : Buffer.from(String(text == null ? "" : text));
+        if (!raw.length || raw.length > 65536 || raw.includes(0)) {
+          throw new Error("Config file is empty or too large");
+        }
+        const parsed = parseWireguardConf(raw.toString("utf8"));
+        if (!parsed.ok) throw new Error(parsed.error);
+        const id = crypto.randomUUID();
+        const safeName = safeFilename(filename) || "wireguard.conf";
+        writeEncrypted(id, raw.toString("utf8"));
+        profiles.push({
+          id,
+          name: displayNameFromFilename(safeName),
+          filename: safeName,
+          endpointHost: parsed.endpointHost,
+          location: null,
+          countryCode: null,
+        });
+        save();
+        return { success: true, error: null, id, status: publish() };
+      });
+    },
   };
 }
 
@@ -1003,6 +1217,10 @@ module.exports = {
   buildWireproxyIni,
   buildSocksPac,
   buildProxyConfig,
+  buildBlackholePac,
+  buildBlackholeProxyConfig,
+  assertWireproxyArchive,
+  wireproxyArchiveSha256,
   redactSecrets,
   extractTarGz,
   isPlausibleExecutable,

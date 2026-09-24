@@ -76,6 +76,7 @@ function createTasks(options = {}) {
   const isServiceUrl = options.isServiceUrl || (() => false);
   const listServices = options.listServices || (() => []);
   const broadcast = options.broadcast || (() => {});
+  const accountFor = options.accountFor || (() => "default");
 
   let tasks = [];
   let workspace = "chat";
@@ -91,6 +92,21 @@ function createTasks(options = {}) {
     } catch {
       return false;
     }
+  }
+
+  function accountIdFor(service, requested) {
+    if (typeof requested === "string" && requested.trim()) return requested.trim().slice(0, 80);
+    try {
+      const value = accountFor(service);
+      if (typeof value === "string" && value.trim()) return value.trim().slice(0, 80);
+    } catch {}
+    return "default";
+  }
+
+  function sameAssignment(item, service, accountId) {
+    if (!item || item.service !== service) return false;
+    if (accountId == null || accountId === "") return true;
+    return (item.accountId || "default") === accountId;
   }
 
   function urlAllowed(service, url) {
@@ -123,6 +139,7 @@ function createTasks(options = {}) {
   function cloneAssignment(entry) {
     return {
       service: entry.service,
+      accountId: entry.accountId || "default",
       status: entry.status,
       url: entry.url || null,
       attention: Boolean(entry.attention),
@@ -146,7 +163,7 @@ function createTasks(options = {}) {
       revision,
       workspace,
       lastService,
-      capture: capture ? { taskId: capture.taskId, service: capture.service } : null,
+      capture: capture ? { taskId: capture.taskId, service: capture.service, accountId: capture.accountId || "default" } : null,
       services: knownServices(),
       tasks: tasks.map(cloneTask),
     };
@@ -224,14 +241,19 @@ function createTasks(options = {}) {
   function normalizeAssignment(entry, seen) {
     if (!entry || typeof entry !== "object") return null;
     const service = entry.service;
-    if (!known(service) || seen.has(service)) return null;
-    seen.add(service);
+    const accountId = typeof entry.accountId === "string" && entry.accountId.trim()
+      ? entry.accountId.trim().slice(0, 80)
+      : "default";
+    const key = `${service}\n${accountId}`;
+    if (!known(service) || seen.has(key)) return null;
+    seen.add(key);
     const status = TASK_STATUSES.includes(entry.status) ? entry.status : "queued";
     const storedUrl = sanitizeStoredUrl(entry.url);
     const url = storedUrl && urlAllowed(service, storedUrl) ? storedUrl : null;
     const titleStamp = typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : nowIso();
     return {
       service,
+      accountId,
       status,
       url,
       attention: entry.attention === true,
@@ -288,20 +310,26 @@ function createTasks(options = {}) {
     return tasks.find((item) => item.id === id) || null;
   }
 
-  function findAssignment(task, service) {
+  function findAssignment(task, service, accountId) {
     if (!task || !known(service)) return null;
-    return task.assignments.find((item) => item.service === service) || null;
+    return task.assignments.find((item) => sameAssignment(item, service, accountId)) || null;
   }
 
   function normalizeServiceList(services) {
     if (!Array.isArray(services) || services.length === 0) {
       return { ok: false, error: "Choose at least one service" };
     }
-    const unique = [];
-    for (const service of services) {
-      if (!known(service)) return { ok: false, error: "Unknown service" };
-      if (!unique.includes(service)) unique.push(service);
-    }
+      const unique = [];
+      const seen = new Set();
+      for (const item of services) {
+        const service = typeof item === "string" ? item : item && item.service;
+        const accountId = accountIdFor(service, item && typeof item === "object" ? item.accountId : "");
+        if (!known(service)) return { ok: false, error: "Unknown service" };
+        const key = `${service}\n${accountId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ service, accountId });
+      }
     if (!unique.length) return { ok: false, error: "Choose at least one service" };
     return { ok: true, services: unique };
   }
@@ -324,8 +352,9 @@ function createTasks(options = {}) {
         prompt: prompt.value,
         createdAt: stamp,
         updatedAt: stamp,
-        assignments: services.services.map((service) => ({
-          service,
+        assignments: services.services.map((item) => ({
+          service: item.service,
+          accountId: item.accountId,
           status: "queued",
           url: null,
           attention: false,
@@ -375,7 +404,7 @@ function createTasks(options = {}) {
       const body = payload && typeof payload === "object" ? payload : {};
       const task = findTask(body.taskId);
       if (!task) return fail("Unknown task");
-      const assignment = findAssignment(task, body.service);
+      const assignment = findAssignment(task, body.service, body.accountId || "");
       if (!assignment) return fail("Unknown service");
       if (!TASK_STATUSES.includes(body.status)) return fail("Unknown status");
       if (!canTransition(assignment.status, body.status)) {
@@ -397,12 +426,14 @@ function createTasks(options = {}) {
       const task = findTask(body.taskId);
       if (!task) return fail("Unknown task");
       if (!known(body.service)) return fail("Unknown service");
-      if (task.assignments.some((item) => item.service === body.service)) {
+      const accountId = accountIdFor(body.service, body.accountId);
+      if (task.assignments.some((item) => sameAssignment(item, body.service, accountId))) {
         return fail("Service is already on this task");
       }
       const stamp = nowIso();
       task.assignments.push({
         service: body.service,
+        accountId,
         status: "queued",
         url: null,
         attention: false,
@@ -419,12 +450,15 @@ function createTasks(options = {}) {
       const body = payload && typeof payload === "object" ? payload : {};
       const task = findTask(body.taskId);
       if (!task) return fail("Unknown task");
-      if (!task.assignments.some((item) => item.service === body.service)) {
+      const accountId = body.accountId ? accountIdFor(body.service, body.accountId) : "";
+      if (!task.assignments.some((item) => sameAssignment(item, body.service, accountId))) {
         return fail("Unknown service");
       }
       if (task.assignments.length <= 1) return fail("A task needs at least one service");
-      task.assignments = task.assignments.filter((item) => item.service !== body.service);
-      if (capture && capture.taskId === task.id && capture.service === body.service) capture = null;
+      task.assignments = task.assignments.filter((item) => !sameAssignment(item, body.service, accountId));
+      if (capture && capture.taskId === task.id && capture.service === body.service && (!accountId || capture.accountId === accountId)) {
+        capture = null;
+      }
       task.updatedAt = nowIso();
       return ok();
     });
@@ -436,14 +470,14 @@ function createTasks(options = {}) {
       const body = payload && typeof payload === "object" ? payload : {};
       const task = findTask(body.taskId);
       if (!task) return fail("Unknown task");
-      const assignment = findAssignment(task, body.service);
+      const assignment = findAssignment(task, body.service, body.accountId || "");
       if (!assignment) return fail("Unknown service");
       const stamp = nowIso();
       if (assignment.status === "queued") assignment.status = "doing";
       assignment.attention = false;
       assignment.updatedAt = stamp;
       task.updatedAt = stamp;
-      capture = { taskId: task.id, service: assignment.service };
+      capture = { taskId: task.id, service: assignment.service, accountId: assignment.accountId || "default" };
       workspace = "chat";
       lastService = assignment.service;
       return ok();
@@ -469,7 +503,7 @@ function createTasks(options = {}) {
     });
   }
 
-  function noteActivity(service) {
+  function noteActivity(service, accountId) {
     return enqueue(() => {
       load();
       if (!known(service)) return unchanged();
@@ -477,7 +511,8 @@ function createTasks(options = {}) {
       let changed = false;
       for (const task of tasks) {
         for (const assignment of task.assignments) {
-          if (assignment.service !== service || assignment.status !== "doing" || assignment.attention) continue;
+          if (!sameAssignment(assignment, service, accountId || "")) continue;
+          if (assignment.status !== "doing" || assignment.attention) continue;
           assignment.attention = true;
           assignment.updatedAt = stamp;
           task.updatedAt = stamp;
@@ -485,7 +520,9 @@ function createTasks(options = {}) {
         }
       }
       if (!changed) return unchanged();
-      return ok();
+      const result = ok();
+      result.noted = true;
+      return result;
     });
   }
 
@@ -502,7 +539,7 @@ function createTasks(options = {}) {
       }
       if (!capture || capture.service !== service) return unchanged();
       const task = findTask(capture.taskId);
-      const assignment = findAssignment(task, service);
+      const assignment = findAssignment(task, service, capture.accountId || "");
       if (!assignment) {
         capture = null;
         return ok();

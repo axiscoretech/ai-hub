@@ -182,7 +182,14 @@
     removeTask.addEventListener("click", () => {
       void run(window.electronAPI.tasksDelete(task.id));
     });
-    actions.append(copy, removeTask);
+    const side = document.createElement("button");
+    side.type = "button";
+    side.textContent = task.assignments.length > 3 ? "Side by side (3)" : "Side by side";
+    side.disabled = task.assignments.length < 2;
+    side.addEventListener("click", () => {
+      if (window.electronAPI.compareStart) void run(window.electronAPI.compareStart(task.id));
+    });
+    actions.append(side, copy, removeTask);
     top.append(title, actions);
     card.appendChild(top);
 

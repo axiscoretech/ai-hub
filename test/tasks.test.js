@@ -3,7 +3,7 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createTasks } = require("../tasks");
+const { createTasks } = require("../out/main/tasks");
 
 const KNOWN = new Set(["ChatGPT", "Claude", "OpenClaw"]);
 const HOSTS = {
@@ -339,7 +339,7 @@ test("delete task clears capture", async (t) => {
   const keepId = first.status.tasks[0].id;
   const dropId = second.status.tasks.find((item) => item.title === "Drop").id;
   const opened = await ctx.api.open({ taskId: dropId, service: "ChatGPT" });
-  assert.deepEqual(opened.status.capture, { taskId: dropId, service: "ChatGPT" });
+  assert.deepEqual(opened.status.capture, { taskId: dropId, service: "ChatGPT", accountId: "default" });
   assert.equal(opened.status.workspace, "chat");
   assert.equal(opened.status.lastService, "ChatGPT");
   assert.equal(assignment(opened.status, dropId, "ChatGPT").status, "doing");
@@ -355,7 +355,7 @@ test("delete task clears capture", async (t) => {
   assert.equal(reopened.status.capture.taskId, keepId);
   const other = await ctx.api.delete(dropId);
   assert.equal(other.success, false);
-  assert.deepEqual(ctx.api.list().capture, { taskId: keepId, service: "Claude" });
+  assert.deepEqual(ctx.api.list().capture, { taskId: keepId, service: "Claude", accountId: "default" });
   const cleared = await ctx.api.clearCapture();
   assert.equal(cleared.success, true);
   assert.equal(cleared.status.capture, null);

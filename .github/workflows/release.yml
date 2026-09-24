@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Compile
+        run: npm run build
+
       - name: Detect signing secrets
         id: signing
         env:
@@ -95,6 +98,30 @@ jobs:
             security delete-keychain "$CSC_KEYCHAIN" || true
           fi
 
+  checksums:
+    needs: [build-mac, build-win, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          gh release download "$tag" --dir "$RUNNER_TEMP/release-assets" --clobber
+          cd "$RUNNER_TEMP/release-assets"
+          rm -f SHA256SUMS
+          sha256sum -- * > SHA256SUMS
+          gh release upload "$tag" SHA256SUMS --clobber
+          cd "$GITHUB_WORKSPACE"
+          notes="$(node scripts/release-notes.js)"
+          gh release edit "$tag" --notes "$notes"
+
   build-win:
     runs-on: windows-latest
 
@@ -114,8 +141,36 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Compile
+        run: npm run build
+
       - name: Build and publish Windows release
         run: npx electron-builder --win --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile
+        run: npm run build
+
+      - name: Build and publish Linux AppImage
+        run: npx electron-builder --linux AppImage --x64 --arm64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

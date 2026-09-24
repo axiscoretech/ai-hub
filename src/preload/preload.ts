@@ -1,0 +1,86 @@
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { type InvokeChannel, type SendChannel } from "../shared/ipc";
+
+function invoke(channel: InvokeChannel, ...args: unknown[]) {
+  return ipcRenderer.invoke(channel, ...args);
+}
+
+function send(channel: SendChannel, ...args: unknown[]) {
+  ipcRenderer.send(channel, ...args);
+}
+
+function listen(channel: string, cb: (...args: any[]) => void) {
+  ipcRenderer.on(channel, (_event: IpcRendererEvent, ...args: unknown[]) => cb(...args));
+}
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  switchTab: (tabName: string) => send("switch-tab", tabName),
+  onTabActive: (cb: (name: string) => void) => listen("tab-active", cb),
+  onTabProgress: (cb: (name: string, event: string) => void) => listen("tab-progress", cb),
+  setTopBarHeight: (h: number) => send("set-topbar-height", h),
+  reloadActiveTab: (ignoreCache: boolean) => send("reload-active-tab", ignoreCache),
+  resetTabSession: (tabName: string) => invoke("reset-tab-session", tabName),
+  setProxy: (config: unknown) => invoke("set-proxy", config),
+  clearProxy: () => invoke("clear-proxy"),
+  pickExtension: () => invoke("pick-extension"),
+  installExtension: (id: string) => invoke("install-extension", id),
+  listExtensions: () => invoke("list-extensions"),
+  toggleExtension: (id: string, enabled: boolean) => invoke("toggle-extension", id, enabled),
+  uninstallExtension: (id: string) => invoke("uninstall-extension", id),
+  openExternal: (url: string) => send("open-external", url),
+  listWireguardConfigs: () => invoke("wg-list"),
+  importWireguardConfigs: () => invoke("wg-import"),
+  removeWireguardConfig: (id: string) => invoke("wg-remove", id),
+  connectWireguard: (id: string) => invoke("wg-connect", id),
+  disconnectWireguard: () => invoke("wg-disconnect"),
+  onWireguardStatus: (cb: (status: unknown) => void) => listen("wg-status", cb),
+  tunnelCancel: () => invoke("tunnel-cancel"),
+  onTunnelGate: (cb: (info: unknown) => void) => listen("tunnel-gate", cb),
+  setContentTheme: (theme: string) => send("set-content-theme", theme),
+  openclawStatus: () => invoke("openclaw-status"),
+  openclawStart: () => invoke("openclaw-start"),
+  openclawDashboard: () => invoke("openclaw-dashboard"),
+  onOpenClawDown: (cb: (info: unknown) => void) => listen("openclaw-down", cb),
+  tasksList: () => invoke("tasks-list"),
+  tasksCreate: (payload: unknown) => invoke("tasks-create", payload),
+  tasksUpdate: (payload: unknown) => invoke("tasks-update", payload),
+  tasksDelete: (id: string) => invoke("tasks-delete", id),
+  tasksSetStatus: (payload: unknown) => invoke("tasks-set-status", payload),
+  tasksAddAssignment: (payload: unknown) => invoke("tasks-add-assignment", payload),
+  tasksRemoveAssignment: (payload: unknown) => invoke("tasks-remove-assignment", payload),
+  tasksOpen: (payload: unknown) => invoke("tasks-open", payload),
+  tasksSetWorkspace: (workspace: string) => invoke("tasks-set-workspace", workspace),
+  tasksToggleWorkspace: () => invoke("tasks-toggle-workspace"),
+  tasksClearCapture: () => invoke("tasks-clear-capture"),
+  onTasks: (cb: (status: unknown) => void) => listen("tasks-status", cb),
+  googleStatus: () => invoke("google-status"),
+  googleSignIn: () => invoke("google-sign-in"),
+  googleApplyAll: () => invoke("google-apply-all"),
+  googleUseShared: (service: string) => invoke("google-use-shared", service),
+  googleUseOther: (service: string) => invoke("google-use-other", service),
+  onGoogle: (cb: (status: unknown) => void) => listen("google-status", cb),
+  servicesList: () => invoke("services-list"),
+  servicesSetRoute: (payload: unknown) => invoke("services-set-route", payload),
+  servicesSetHidden: (payload: unknown) => invoke("services-set-hidden", payload),
+  servicesReorder: (ids: string[]) => invoke("services-reorder", ids),
+  servicesAddAccount: (payload: unknown) => invoke("services-add-account", payload),
+  servicesSetAccount: (payload: unknown) => invoke("services-set-account", payload),
+  servicesSetLabel: (payload: unknown) => invoke("services-set-label", payload),
+  servicesRemoveAccount: (payload: unknown) => invoke("services-remove-account", payload),
+  servicesAddCustom: (payload: unknown) => invoke("services-add-custom", payload),
+  servicesRemoveCustom: (id: string) => invoke("services-remove-custom", id),
+  servicesSetHotkey: (hotkey: string) => invoke("services-set-hotkey", hotkey),
+  servicesSetSpellcheck: (languages: string[]) => invoke("services-set-spellcheck", languages),
+  onServices: (cb: (status: unknown) => void) => listen("services-status", cb),
+  compareStart: (taskId: string) => invoke("compare-start", taskId),
+  compareInsert: () => invoke("compare-insert"),
+  compareStop: () => invoke("compare-stop"),
+  onCompare: (cb: (status: unknown) => void) => listen("compare-status", cb),
+  findInPage: (text: string, findNext: boolean) => invoke("find-in-page", text, findNext),
+  findStop: () => invoke("find-stop"),
+  onFindOpen: (cb: () => void) => listen("find-open", cb),
+  updateDownload: () => invoke("update-download"),
+  updateInstall: () => invoke("update-install"),
+  onUpdateAvailable: (cb: (info: unknown) => void) => listen("update-available", cb),
+  onUpdateDownloaded: (cb: () => void) => listen("update-downloaded", cb),
+});

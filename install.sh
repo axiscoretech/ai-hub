@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install the latest AI Hub release into /Applications and open it.
-# macOS only. Clears the download quarantine flag so Gatekeeper does not
-# ask you to allow the app by hand.
+# macOS only. A notarized app opens as it is. Quarantine is cleared only
+# when the signature is not accepted.
 set -euo pipefail
 
 REPO="axiscoretech/ai-hub"
@@ -70,6 +70,9 @@ dest="/Applications/AI Hub.app"
 echo "Installing to ${dest}"
 rm -rf "$dest"
 ditto "$app" "$dest"
-xattr -cr "$dest"
+if ! spctl --assess --type execute "$dest" >/dev/null 2>&1; then
+  echo "This build is not notarized. Clearing the quarantine flag so it can open."
+  xattr -cr "$dest"
+fi
 open "$dest"
 echo "AI Hub is in Applications and open."

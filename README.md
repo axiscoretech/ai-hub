@@ -4,39 +4,54 @@
 
 # AI Hub
 
-**All your AI assistants in one place.**
+**Separate sessions, a tunnel only for the hub tabs you choose, and no typing into those sites for you.**
 
 ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · OpenClaw
 
 [![Release](https://img.shields.io/github/v/release/axiscoretech/ai-hub?style=flat-square&color=7c6aff)](https://github.com/axiscoretech/ai-hub/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/axiscoretech/ai-hub/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-![AI Hub, latest version](assets/screenshot.png)
+![Switching hub tabs](assets/tab-switch.gif)
 
-*Latest version. The first screen is the service you open, not Compare.*
+*Switch tabs without reloading. Each service keeps its own login.*
 
 ---
 
-A macOS and Windows app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session. Logins persist, tabs stay live, and the chats stay out of your browser.
+A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites. It does not type into them.
 
 ---
 
 ## Features
 
 - **Separate from your browser** — AI chats get their own dock icon and window
-- **Isolated sessions** — stay logged in to every service at once, and switch when a free tier runs out without signing in again
+- **Isolated sessions** — stay logged in to every service at once. A service can hold more than one account, each with its own login
 - **Live tabs** — switching services does not reload the page
-- **Compare** — assign one piece of work to several services, copy the text, and jump back to the right chat
-- **WireGuard** — route hub tabs through a WireGuard config when a service is blocked in your region. This does not change the rest of your Mac or PC
+- **Compare** — put two or three chats side by side, insert the task text into the focused chat without sending it, and keep the task board
+- **WireGuard** — send the hub tabs you choose through a WireGuard config. Other services can stay on a direct connection. This does not change the rest of your Mac, PC, or Linux machine
+- **Your own sites** — add an https address when a service is missing from the list. OpenClaw is hidden until you turn it on
 - **Theme** — dark, light, or match the system
 - **OpenClaw** — a tab for a local OpenClaw gateway, if you have one installed
 
 The app opens the real websites. It does not sell credits, and it does not type into those sites for you.
+
+---
+
+## Privacy
+
+AI Hub does not send telemetry. It talks to the sites you open, to GitHub when it downloads `wireproxy`, and to GitHub Releases when it checks for an app update.
+
+What stays on this computer, under the app's user data folder (`~/Library/Application Support/AI Hub` on macOS, `%APPDATA%\AI Hub` on Windows, `~/.config/AI Hub` on Linux):
+
+- **Logins.** Each service tab has its own session partition (`Partitions/persist:<service>`). Cookies stay in that partition.
+- **WireGuard configs.** Imported `.conf` files are encrypted with the operating system key store (Keychain on macOS, DPAPI on Windows, the desktop keyring on Linux) and stored in `wireguard/`. If encryption is not available, AI Hub refuses to save the config. A plaintext copy exists only while that tunnel is running, then it is deleted.
+- **Compare tasks.** `tasks.json`.
+- **Shared Google account book.** `google-accounts.json`.
+- **Extensions.** `extensions/`.
 
 ---
 
@@ -106,9 +121,10 @@ Latest release, into `/Applications`, then Launchpad. Apple Silicon and Intel ar
 curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
 ```
 
-The script removes the download quarantine flag before the first launch, so you should not see a block.
+The script installs the latest release into `/Applications` and opens it. A notarized build opens without an extra prompt. If the signature is not accepted, the script clears the quarantine flag once.
 
-### If macOS still blocks the app
+<details>
+<summary>If macOS still blocks the app</summary>
 
 This happens when the app was downloaded by hand and is not notarized yet.
 
@@ -119,12 +135,7 @@ This happens when the app was downloaded by hand and is not notarized yet.
 
 If that button is not there: in Finder open **Applications**, right-click **AI Hub**, choose **Open**, and confirm **Open** in the dialog.
 
-If macOS says the app is damaged, clear the quarantine flag once and launch it again:
-
-```bash
-xattr -cr /Applications/AI\ Hub.app
-open /Applications/AI\ Hub.app
-```
+</details>
 
 ### macOS — DMG
 
@@ -141,6 +152,10 @@ Use the Apple Settings steps above if macOS refuses the first launch.
 2. Run the installer
 3. Launch **AI Hub** from the Start Menu or Desktop shortcut
 
+### Linux
+
+Download the `.AppImage` for your machine from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest), mark it executable, and run it. `wireproxy` can be downloaded by the app or installed yourself.
+
 ---
 
 ## Install
@@ -151,7 +166,7 @@ Use the Apple Settings steps above if macOS refuses the first launch.
 curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
 ```
 
-The app lands in `/Applications` and opens. The script removes the quarantine flag, so System Settings does not ask you to allow it.
+The app lands in `/Applications` and opens. A notarized build does not need a quarantine exception. The script clears that flag only when macOS does not accept the signature.
 
 A notarized build, once Apple signing secrets are set, is the step that lets a plain DMG open with no script and no warning. Setup for that is in [`docs/signing.md`](docs/signing.md).
 
@@ -166,11 +181,7 @@ Download the right file for your Mac from [**Releases**](https://github.com/axis
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
-If macOS blocks this copy, use **System Settings → Privacy & Security → Security → Open Anyway**, or right-click **AI Hub** in **Applications** and choose **Open**. If it says the app is damaged:
-
-```bash
-xattr -cr /Applications/AI\ Hub.app
-```
+If macOS blocks this copy, use **System Settings → Privacy & Security → Security → Open Anyway**, or right-click **AI Hub** in **Applications** and choose **Open**.
 
 ### macOS — Homebrew
 
@@ -222,7 +233,7 @@ npm start
 Requires [Node.js](https://nodejs.org) 18+ and [npm](https://npmjs.com).
 
 ```bash
-npm test   # task board checks, no Electron window
+npm test   # board, WireGuard, services, and an Electron smoke check
 ```
 
 ---
@@ -236,6 +247,7 @@ npm run dist        # macOS ARM64 + x64 DMG → dist/
 npm run dist:arm    # Apple Silicon only
 npm run dist:x64    # Intel Mac only
 npm run dist:win    # Windows x64 NSIS installer → dist/
+npm run dist:linux  # Linux AppImage → dist/
 npm run open-app    # unpacked macOS app in dist/mac, then open it
 ```
 
