@@ -100,13 +100,31 @@ If the gateway is already running, the OpenClaw tab opens its dashboard. If it i
 
 ### macOS — one command
 
-This downloads the latest release, puts **AI Hub.app** in `/Applications`, and opens it. You do not need to allow the app in System Settings.
+Latest release, into `/Applications`, then Launchpad. Apple Silicon and Intel are chosen for you.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
 ```
 
-Apple Silicon and Intel are picked automatically.
+The script removes the download quarantine flag before the first launch, so you should not see a block.
+
+### If macOS still blocks the app
+
+This happens when the app was downloaded by hand and is not notarized yet.
+
+1. Open **System Settings**.
+2. Go to **Privacy & Security**.
+3. Scroll to the **Security** section at the bottom.
+4. Next to the message that AI Hub was blocked, click **Open Anyway**, then confirm **Open**.
+
+If that button is not there: in Finder open **Applications**, right-click **AI Hub**, choose **Open**, and confirm **Open** in the dialog.
+
+If macOS says the app is damaged, clear the quarantine flag once and launch it again:
+
+```bash
+xattr -cr /Applications/AI\ Hub.app
+open /Applications/AI\ Hub.app
+```
 
 ### macOS — DMG
 
@@ -115,13 +133,7 @@ Apple Silicon and Intel are picked automatically.
 3. Drag **AI Hub.app** into `/Applications`
 4. Launch the app
 
-A hand-downloaded DMG is still marked as coming from the internet. Until a release is signed and notarized with Apple, macOS may block that copy. The one-command install above clears that mark for you. If you already dragged the app in by hand and macOS says it is damaged or from an unidentified developer:
-
-```bash
-xattr -cr /Applications/AI\ Hub.app
-```
-
-Then launch it again.
+Use the Apple Settings steps above if macOS refuses the first launch.
 
 ### Windows
 
@@ -154,9 +166,7 @@ Download the right file for your Mac from [**Releases**](https://github.com/axis
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
-When installing from Releases (not Homebrew), macOS Gatekeeper may refuse to open the app on first launch. Go to **System Settings → Privacy & Security** and use **Open Anyway** for AI Hub at the bottom of the page. Alternatively, right-click **AI Hub.app** in `/Applications` and choose **Open** — then confirm in the dialog.
-
-If macOS reports that the app is damaged, clear the quarantine flag once and relaunch:
+If macOS blocks this copy, use **System Settings → Privacy & Security → Security → Open Anyway**, or right-click **AI Hub** in **Applications** and choose **Open**. If it says the app is damaged:
 
 ```bash
 xattr -cr /Applications/AI\ Hub.app
