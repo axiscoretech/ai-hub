@@ -110,17 +110,19 @@ jobs:
       - name: Publish SHA256SUMS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           tag="${GITHUB_REF_NAME}"
           mkdir -p "$RUNNER_TEMP/release-assets"
-          gh release download "$tag" --dir "$RUNNER_TEMP/release-assets" --clobber
-          cd "$RUNNER_TEMP/release-assets"
-          rm -f SHA256SUMS
-          sha256sum -- * > SHA256SUMS
-          gh release upload "$tag" SHA256SUMS --clobber
-          cd "$GITHUB_WORKSPACE"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/release-assets" --clobber
+          (
+            cd "$RUNNER_TEMP/release-assets"
+            rm -f SHA256SUMS
+            sha256sum -- * > SHA256SUMS
+          )
+          gh release upload "$tag" "$RUNNER_TEMP/release-assets/SHA256SUMS" --repo "$GITHUB_REPOSITORY" --clobber
           notes="$(node scripts/release-notes.js)"
-          gh release edit "$tag" --notes "$notes"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "$notes"
 
   build-win:
     runs-on: windows-latest
