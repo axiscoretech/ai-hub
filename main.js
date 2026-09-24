@@ -430,7 +430,7 @@ function createWindow() {
   attachBoardShortcut(win.webContents);
   ignoreUnloadBlock(win.webContents);
   win.webContents.on("did-finish-load", () => {
-    void bootTasksWorkspace();
+    void startTunnelThenChats();
   });
   win.loadFile("index.html");
 
@@ -1269,9 +1269,44 @@ function showTaskService(status) {
   if (win && !win.isDestroyed()) win.webContents.send("tab-active", service);
 }
 
-function bootTasksWorkspace() {
+let tunnelGateStarted = false;
+let tunnelGateSettled = false;
+
+function sendTunnelGate(active, name) {
   if (!win || win.isDestroyed()) return;
+  win.webContents.send("tunnel-gate", { active: Boolean(active), name: name || "" });
+}
+
+function bootTasksWorkspace() {
+  if (!tunnelGateSettled || !win || win.isDestroyed()) return;
   applyWorkspaceView(tasks.list());
+}
+
+async function startTunnelThenChats() {
+  if (tunnelGateStarted) return;
+  tunnelGateStarted = true;
+  const saved = wireguard.savedTunnel();
+  if (!saved) {
+    tunnelGateSettled = true;
+    bootTasksWorkspace();
+    return;
+  }
+  sendTunnelGate(true, saved.name);
+  try {
+    await wireguard.restore();
+  } catch {}
+  if (tunnelGateSettled) return;
+  tunnelGateSettled = true;
+  sendTunnelGate(false);
+  bootTasksWorkspace();
+}
+
+async function cancelTunnelStartup() {
+  if (!tunnelGateSettled) tunnelGateSettled = true;
+  const result = await wireguard.cancelAutoConnect();
+  sendTunnelGate(false);
+  bootTasksWorkspace();
+  return result;
 }
 
 let boardShortcutAt = 0;
@@ -1571,6 +1606,8 @@ ipcMain.handle("wg-connect", async (_event, id) => {
   }
 });
 
+ipcMain.handle("tunnel-cancel", () => cancelTunnelStartup());
+
 ipcMain.handle("wg-disconnect", async () => {
   try {
     return await wireguard.disconnect();
@@ -1827,9 +1864,6 @@ app.whenReady().then(async () => {
   }
 
   await loadPersistedExtensions();
-  try {
-    await wireguard.restore();
-  } catch {}
 });
 
 app.on("browser-window-created", (_event, window) => {

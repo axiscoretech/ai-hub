@@ -342,6 +342,9 @@ function createWireguard(options) {
   let activeChild = null;
   let loaded = false;
   let quitting = false;
+  let connectSerial = 0;
+  let aborting = false;
+  let skipAutoConnect = false;
   let chain = Promise.resolve();
 
   function wireguardDir() {
@@ -389,9 +392,11 @@ function createWireguard(options) {
       if (persistedConnectedId && !profiles.some((entry) => entry.id === persistedConnectedId)) {
         persistedConnectedId = null;
       }
+      skipAutoConnect = raw.skipAutoConnect === true;
     } catch {
       profiles = [];
       persistedConnectedId = null;
+      skipAutoConnect = false;
     }
   }
 
@@ -407,6 +412,7 @@ function createWireguard(options) {
         countryCode: entry.countryCode || null,
       })),
       connectedId: persistedConnectedId,
+      skipAutoConnect,
     }, null, 2);
     const dest = profilesFile();
     const tmp = `${dest}.tmp`;
@@ -600,7 +606,7 @@ function createWireguard(options) {
       stderrRef.failure = err.message;
     });
     proc.on("exit", (code) => {
-      if (quitting || activeChild !== proc) return;
+      if (quitting || aborting || activeChild !== proc) return;
       if (phase === "connecting") {
         stderrRef.failure = stderrRef.failure || exitText(code, stderrRef.text);
         return;
@@ -647,10 +653,15 @@ function createWireguard(options) {
     }
   }
 
+  function connectWasCancelled(token) {
+    return aborting || quitting || connectSerial !== token;
+  }
+
   async function connectInner(id, flags = {}) {
+    const token = ++connectSerial;
     const keepSaved = Boolean(flags.keepSavedOnFailure);
     load();
-    if (quitting) throw new Error("App is quitting");
+    if (aborting || quitting) return snapshot();
     const entry = isId(id) ? profiles.find((item) => item.id === id) : null;
     if (!entry) return failConnect(new Error("Unknown WireGuard config"), keepSaved);
     if (!fs.existsSync(confFile(id))) {
@@ -664,11 +675,13 @@ function createWireguard(options) {
     pendingId = id;
     phase = "connecting";
     publish();
+    const cancelled = () => connectWasCancelled(token);
 
     let binary;
     try {
       binary = await resolveBinary();
     } catch (err) {
+      if (cancelled()) return snapshot();
       if (connectedId && activeChild && activeChild.exitCode === null) {
         pendingId = null;
         phase = "connected";
@@ -680,7 +693,7 @@ function createWireguard(options) {
     }
 
     await haltProcess();
-    if (quitting) throw new Error("App is quitting");
+    if (cancelled()) return snapshot();
 
     const port = await getFreePort();
     ensureDirs();
@@ -710,10 +723,12 @@ function createWireguard(options) {
         return null;
       });
     } catch (err) {
+      if (cancelled()) return snapshot();
       return failConnect(err, keepSaved);
     }
 
-    if (quitting || proc.exitCode !== null || stderrRef.failure || activeChild !== proc) {
+    if (cancelled()) return snapshot();
+    if (proc.exitCode !== null || stderrRef.failure || activeChild !== proc) {
       const message = stderrRef.failure
         || (proc.exitCode !== null ? exitText(proc.exitCode, stderrRef.text) : "App is quitting");
       return failConnect(new Error(message), keepSaved);
@@ -722,16 +737,20 @@ function createWireguard(options) {
     try {
       await applyProxy(buildProxyConfig(port));
     } catch (err) {
+      if (cancelled()) return snapshot();
       return failConnect(err, keepSaved);
     }
 
+    if (cancelled()) return snapshot();
     if (proc.exitCode !== null || activeChild !== proc) {
       return failConnect(new Error(stderrRef.failure || exitText(proc.exitCode, stderrRef.text)), keepSaved);
     }
 
+    if (cancelled()) return snapshot();
     connectedId = id;
     pendingId = null;
     persistedConnectedId = id;
+    skipAutoConnect = false;
     phase = "connected";
     lastError = null;
     save();
@@ -840,6 +859,7 @@ function createWireguard(options) {
       connectedId = null;
       pendingId = null;
       persistedConnectedId = null;
+      skipAutoConnect = true;
       phase = "disconnected";
       lastError = null;
       save();
@@ -868,16 +888,50 @@ function createWireguard(options) {
     });
   }
 
+  function savedTunnel() {
+    load();
+    if (skipAutoConnect) return null;
+    let id = persistedConnectedId;
+    if (!id && profiles.length === 1) id = profiles[0].id;
+    if (!id) return null;
+    const entry = profiles.find((item) => item.id === id);
+    if (!entry) return null;
+    return { id: entry.id, name: entry.name };
+  }
+
+  function cancelAutoConnect() {
+    aborting = true;
+    connectSerial += 1;
+    const proc = activeChild;
+    if (proc && proc.exitCode === null) {
+      try { proc.kill("SIGTERM"); } catch {}
+    }
+    return enqueue(async () => {
+      load();
+      await haltProcess();
+      connectedId = null;
+      pendingId = null;
+      persistedConnectedId = null;
+      skipAutoConnect = true;
+      phase = "disconnected";
+      lastError = null;
+      aborting = false;
+      save();
+      try { await clearProxy(); } catch {}
+      return { success: true, error: null, status: publish() };
+    });
+  }
+
   function restore() {
     return enqueue(async () => {
       load();
-      const id = persistedConnectedId;
-      if (!id) {
+      const saved = savedTunnel();
+      if (!saved) {
         publish();
         return snapshot();
       }
       try {
-        return await connectInner(id, { keepSavedOnFailure: true });
+        return await connectInner(saved.id, { keepSavedOnFailure: true });
       } catch {
         return snapshot();
       }
@@ -908,6 +962,8 @@ function createWireguard(options) {
     disconnect,
     stopForExternalProxy,
     restore,
+    savedTunnel,
+    cancelAutoConnect,
     kill,
   };
 }

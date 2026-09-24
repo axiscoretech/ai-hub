@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   connectWireguard: (id) => ipcRenderer.invoke("wg-connect", id),
   disconnectWireguard: () => ipcRenderer.invoke("wg-disconnect"),
   onWireguardStatus: (cb) => ipcRenderer.on("wg-status", (_event, status) => cb(status)),
+  tunnelCancel: () => ipcRenderer.invoke("tunnel-cancel"),
+  onTunnelGate: (cb) => ipcRenderer.on("tunnel-gate", (_event, info) => cb(info)),
   setContentTheme:  (theme)   => ipcRenderer.send("set-content-theme", theme),
   openclawStatus: () => ipcRenderer.invoke("openclaw-status"),
   openclawStart: () => ipcRenderer.invoke("openclaw-start"),

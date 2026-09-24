@@ -44,6 +44,70 @@
       #google-overlay { display: none; }
       #google-panel { display: none; }
 
+      #tunnel-gate {
+        position: fixed;
+        z-index: 80;
+        left: 0;
+        right: 0;
+        top: 60px;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(18, 18, 18, 0.92);
+        -webkit-app-region: no-drag;
+      }
+      #tunnel-gate[hidden] { display: none; }
+      .tunnel-card {
+        width: min(420px, calc(100% - 48px));
+        padding: 28px 24px;
+        border-radius: 14px;
+        background: #242424;
+        border: 1px solid #3a3a3a;
+        text-align: center;
+      }
+      .tunnel-card h1 {
+        font-size: 18px;
+        font-weight: 650;
+        margin: 14px 0 6px;
+      }
+      #tunnel-name {
+        color: #bdbdbd;
+        font-size: 13px;
+        margin-bottom: 18px;
+      }
+      #tunnel-cancel {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 7px 16px;
+        border-radius: 8px;
+        border: 1px solid #4a4a4a;
+        background: transparent;
+        color: #eee;
+        cursor: pointer;
+      }
+      .tunnel-spin {
+        width: 22px;
+        height: 22px;
+        margin: 0 auto;
+        border: 2px solid rgba(255,255,255,0.12);
+        border-top-color: #7c6aff;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      body[data-theme="light"] #tunnel-gate { background: rgba(243, 245, 249, 0.94); }
+      body[data-theme="light"] .tunnel-card {
+        background: #fff;
+        border-color: #d8deea;
+        color: #101828;
+      }
+      body[data-theme="light"] #tunnel-name { color: #516074; }
+      body[data-theme="light"] #tunnel-cancel {
+        color: #1f2937;
+        border-color: #cdd6e5;
+        background: #f8fafc;
+      }
+
       /* ── Progress bar ─────────────────────────────────────────── */
 
       #progress-bar {
@@ -721,6 +785,14 @@
     </div>
 
     <div id="board" aria-hidden="true"></div>
+    <div id="tunnel-gate" hidden>
+      <div class="tunnel-card">
+        <div class="tunnel-spin"></div>
+        <h1>Connecting WireGuard</h1>
+        <p id="tunnel-name">WireGuard</p>
+        <button type="button" id="tunnel-cancel">Cancel</button>
+      </div>
+    </div>
     <div id="google-overlay" hidden></div>
     <div id="google-panel" hidden aria-label="Google sign-in">
       <h2>Google</h2>
@@ -1276,10 +1348,36 @@
         }
       }
 
+      function showTunnelGate(info) {
+        const gate = document.getElementById('tunnel-gate');
+        if (!gate) return;
+        const active = Boolean(info && info.active);
+        gate.hidden = !active;
+        const name = document.getElementById('tunnel-name');
+        if (name && active) name.textContent = (info && info.name) || 'WireGuard';
+        const cancel = document.getElementById('tunnel-cancel');
+        if (cancel && active) {
+          cancel.disabled = false;
+          cancel.textContent = 'Cancel';
+        }
+      }
+
       function initWireguard() {
         if (!window.electronAPI || !window.electronAPI.onWireguardStatus) return;
         window.electronAPI.onWireguardStatus(onWireguardStatus);
         window.electronAPI.listWireguardConfigs().then(onWireguardStatus).catch(() => {});
+        if (window.electronAPI.onTunnelGate) window.electronAPI.onTunnelGate(showTunnelGate);
+        const cancel = document.getElementById('tunnel-cancel');
+        if (cancel && window.electronAPI.tunnelCancel) {
+          cancel.addEventListener('click', () => {
+            cancel.disabled = true;
+            cancel.textContent = 'Cancelling…';
+            window.electronAPI.tunnelCancel().catch(() => {
+              cancel.disabled = false;
+              cancel.textContent = 'Cancel';
+            });
+          });
+        }
       }
 
       /* ─────────────────────────────────────────────────────────── */
