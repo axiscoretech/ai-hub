@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
     "open-app": "node scripts/open-local-app.js",
     "verify:extensions": "electron scripts/verify-extensions.js",
     "dist": "electron-builder --mac --x64 --arm64 --publish never",
@@ -39,8 +40,13 @@
     },
     "files": [
       "main.js",
+      "wireguard.js",
+      "openclaw.js",
+      "tasks.js",
       "preload.js",
       "index.html",
+      "board.js",
+      "board.css",
       "package.json",
       "node_modules/**"
     ],

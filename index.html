@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <title>AI Hub</title>
+    <link rel="stylesheet" href="board.css" />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body { color-scheme: dark; }
 
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -16,6 +19,7 @@
 
       body[data-theme="light"] {
         background: #f3f5f9;
+        color-scheme: light;
       }
 
       input, select {
@@ -74,7 +78,7 @@
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 6px 14px;
+        padding: 6px 10px;
         border-radius: 8px;
         cursor: pointer;
         color: #aaa;
@@ -133,6 +137,24 @@
         white-space: nowrap;
       }
       .toolbar-btn:hover { background: #2a2a2a; color: #bbb; border-color: #4a4a4a; }
+      .toolbar-btn.icon-btn {
+        padding: 5px 7px;
+        min-width: 28px;
+        justify-content: center;
+      }
+      .toolbar-btn.icon-btn svg { display: block; }
+      #theme-btn .icon-sun,
+      #theme-btn .icon-moon,
+      #theme-btn .icon-display { display: none; }
+      #theme-btn[data-preference="light"] .icon-sun,
+      #theme-btn[data-preference="dark"] .icon-moon,
+      #theme-btn[data-preference="system"] .icon-display { display: block; }
+      #vpn-flag-emoji {
+        font-size: 15px;
+        line-height: 1;
+      }
+      #vpn-flag-emoji[hidden],
+      #vpn-flag-icon[hidden] { display: none; }
       #vpn-btn.proxy-on {
         background: rgba(124,106,255,0.1);
         border-color: rgba(124,106,255,0.45);
@@ -229,7 +251,7 @@
         position: fixed;
         top: 60px;
         right: 8px;
-        width: 300px;
+        width: 348px;
         background: #222;
         border: 1px solid #353535;
         border-radius: 10px;
@@ -435,6 +457,199 @@
       }
       #p-msg.ok { display: block; color: #6ec98c; background: rgba(82,199,125,0.08); }
       #p-msg.err { display: block; color: #e07070; background: rgba(220,70,70,0.08); }
+
+      #m-wireguard { font-size: 11px; }
+      .p-wg { display: none; margin-bottom: 10px; }
+      .p-wg.on { display: block; }
+      .p-wg-note { font-size: 11px; color: #666; line-height: 1.35; margin: 0 0 8px; }
+      .p-wg-empty { font-size: 11px; color: #555; margin: 0 0 8px; }
+      .p-wg-error {
+        font-size: 11px; color: #e07070; line-height: 1.35; margin: 0 0 8px;
+        white-space: pre-wrap; word-break: break-word;
+      }
+      .p-wg-error:empty { display: none; }
+      .p-wg-item {
+        padding: 8px; margin-bottom: 6px; border-radius: 7px;
+        border: 1px solid #2c2c2c; background: #1c1c1c;
+      }
+      .p-wg-item.on { border-color: rgba(124,106,255,0.5); background: rgba(124,106,255,0.08); }
+      .p-wg-name { font-size: 12px; color: #ccc; margin-bottom: 2px; }
+      .p-wg-meta { font-size: 10px; color: #777; margin-bottom: 6px; word-break: break-word; }
+      .p-wg-actions { display: flex; gap: 6px; }
+      .p-wg-btn {
+        flex: 1; font-size: 11px; padding: 5px 6px; border-radius: 6px;
+        border: 1px solid rgba(124,106,255,0.35); background: rgba(124,106,255,0.08);
+        color: #b0a6ff; font-family: inherit; cursor: pointer;
+      }
+      .p-wg-btn:hover { background: rgba(124,106,255,0.18); }
+      .p-wg-btn:disabled { opacity: 0.45; cursor: default; }
+      .p-wg-btn.danger {
+        flex: 0 0 auto; border-color: rgba(210,70,70,0.35);
+        background: rgba(210,70,70,0.08); color: #e58a8a;
+      }
+      .p-wg-btn.danger:hover { background: rgba(210,70,70,0.18); }
+      #p-wg-import, #p-wg-disconnect {
+        width: 100%; padding: 7px 10px; border-radius: 7px; margin-top: 6px;
+        border: 1px solid #2c2c2c; background: #1c1c1c; color: #bbb;
+        font-size: 12px; font-family: inherit; cursor: pointer;
+      }
+      #p-wg-import:hover, #p-wg-disconnect:hover { background: #242424; border-color: #404040; }
+      #p-wg-import:disabled, #p-wg-disconnect:disabled { opacity: 0.45; cursor: default; }
+
+      body[data-theme="light"] .p-wg-note,
+      body[data-theme="light"] .p-wg-empty,
+      body[data-theme="light"] .p-wg-meta { color: #7a8799; }
+      body[data-theme="light"] .p-wg-item { background: #f8fafc; border-color: #d7deea; }
+      body[data-theme="light"] .p-wg-item.on {
+        background: rgba(124,106,255,0.08); border-color: rgba(124,106,255,0.45);
+      }
+      body[data-theme="light"] .p-wg-name { color: #334155; }
+      body[data-theme="light"] #p-wg-import,
+      body[data-theme="light"] #p-wg-disconnect {
+        background: #f8fafc; border-color: #d7deea; color: #4a5568;
+      }
+      body[data-theme="light"] .p-wg-error { color: #c24141; }
+
+      /* ── OpenClaw ─────────────────────────────────────────────── */
+
+      #openclaw-panel {
+        display: none;
+        position: fixed;
+        z-index: 30;
+        left: 0;
+        right: 0;
+        top: 60px;
+        -webkit-app-region: no-drag;
+      }
+      #openclaw-panel.visible { display: block; }
+      #openclaw-panel.expanded {
+        bottom: 0;
+        overflow: auto;
+        background: #1e1e1e;
+      }
+      #openclaw-bar {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px 0 16px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #333;
+      }
+      #oc-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #3a3a3a;
+        flex-shrink: 0;
+      }
+      #oc-dot.on { background: #52c77d; box-shadow: 0 0 5px rgba(82,199,125,0.5); }
+      #oc-dot.wait { background: #e09a3a; }
+      #oc-status {
+        font-size: 12px;
+        color: #ddd;
+        white-space: nowrap;
+      }
+      #oc-url {
+        font-size: 12px;
+        color: #8d8d8d;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .oc-spacer { flex: 1; }
+      .oc-btn {
+        flex-shrink: 0;
+        font-size: 12px;
+        font-family: inherit;
+        padding: 4px 10px;
+        border-radius: 7px;
+        border: 1px solid #3a3a3a;
+        background: #242424;
+        color: #ddd;
+        cursor: pointer;
+      }
+      .oc-btn:hover { background: #2e2e2e; }
+      .oc-btn:disabled { opacity: 0.45; cursor: default; }
+      .oc-btn.primary {
+        border-color: rgba(124,106,255,0.45);
+        background: rgba(124,106,255,0.16);
+        color: #d5d0ff;
+      }
+      #oc-detail {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 42px 24px 28px;
+      }
+      #oc-detail h2 {
+        font-size: 22px;
+        font-weight: 650;
+        color: #f2f2f2;
+        margin-bottom: 6px;
+      }
+      .oc-sub, #oc-explain {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #9a9a9a;
+      }
+      .oc-sub { margin-bottom: 14px; }
+      #oc-explain { margin-bottom: 16px; }
+      #oc-install-wrap label {
+        display: block;
+        font-size: 11px;
+        color: #777;
+        margin-bottom: 6px;
+      }
+      #oc-install {
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border-radius: 7px;
+        border: 1px solid #333;
+        background: #141414;
+        color: #e8e8e8;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #oc-log {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 7px;
+        background: rgba(220,70,70,0.08);
+        color: #e07070;
+        font-size: 12px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 220px;
+        overflow: auto;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      #oc-log:empty { display: none; }
+      body[data-theme="light"] #openclaw-panel.expanded { background: #f3f5f9; }
+      body[data-theme="light"] #openclaw-bar {
+        background: #ffffff;
+        border-bottom-color: #d8deea;
+      }
+      body[data-theme="light"] #oc-detail h2 { color: #101828; }
+      body[data-theme="light"] #oc-status { color: #101828; }
+      body[data-theme="light"] #oc-url,
+      body[data-theme="light"] .oc-sub,
+      body[data-theme="light"] #oc-explain,
+      body[data-theme="light"] #oc-install-wrap label { color: #516074; }
+      body[data-theme="light"] .oc-btn {
+        background: #f8fafc;
+        border-color: #d7deea;
+        color: #1f2937;
+      }
+      body[data-theme="light"] #oc-install {
+        background: #ffffff;
+        border-color: #d7deea;
+        color: #111827;
+      }
+      body[data-theme="light"] #oc-log { color: #b42318; background: rgba(180,35,24,0.06); }
     </style>
   </head>
   <body>
@@ -453,15 +668,53 @@
         <div class="tab" data-name="Mistral"     onclick="switchTab('Mistral')">🌬️ Mistral<span class="spinner"></span></div>
         <div class="tab" data-name="Kimi"        onclick="switchTab('Kimi')">🌙 Kimi<span class="spinner"></span></div>
         <div class="tab" data-name="Grok"        onclick="switchTab('Grok')">⚡ Grok<span class="spinner"></span></div>
+        <div class="tab" data-name="OpenClaw"    onclick="switchTab('OpenClaw')" title="OpenClaw, formerly Clawd">🦞 OpenClaw<span class="spinner"></span></div>
       </div>
 
       <div id="vpn-area">
-        <button class="toolbar-btn" id="reload-btn" onclick="reloadPage(false)" title="Reload current page (Cmd/Ctrl+R)">↻ Reload</button>
-        <button class="toolbar-btn" id="hard-reload-btn" onclick="reloadPage(true)" title="Hard reload ignoring cache (Cmd/Ctrl+Shift+R)">⟲ Hard</button>
-        <button class="toolbar-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle shell theme">◐ Theme</button>
-        <button class="toolbar-btn" id="vpn-btn" onclick="toggleVpnPanel()">🛡️ Proxy</button>
+        <button class="toolbar-btn icon-btn" id="reload-btn" onclick="reloadPage(false)" title="Reload (Cmd/Ctrl+R)" aria-label="Reload">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 8A5.2 5.2 0 1 1 8 2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1.2 10.2 3 8 4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="toolbar-btn icon-btn" id="hard-reload-btn" onclick="reloadPage(true)" title="Reload ignoring cache (Cmd/Ctrl+Shift+R)" aria-label="Reload ignoring cache">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 8A5.2 5.2 0 1 1 8 2.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1.2 10.2 3 8 4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.2" cy="12.2" r="1.3" fill="currentColor"/></svg>
+        </button>
+        <button class="toolbar-btn icon-btn" id="theme-btn" type="button" data-preference="dark" onclick="toggleTheme()" title="Theme: dark" aria-label="Theme: dark">
+          <svg class="icon-moon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 9.4A5.4 5.4 0 0 1 6.6 2.8 5.4 5.4 0 1 0 13.2 9.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <svg class="icon-sun" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <svg class="icon-display" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1.4" stroke="currentColor" stroke-width="1.5"/><path d="M6 13.5h4M8 11v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="toolbar-btn icon-btn" id="tasks-btn" type="button" title="Compare (Cmd/Ctrl+Shift+B)" aria-label="Compare"></button>
+        <button class="toolbar-btn icon-btn" id="vpn-btn" type="button" onclick="toggleVpnPanel()" title="WireGuard" aria-label="WireGuard">
+          <svg id="vpn-flag-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.2 1.8v12.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3.2 2.6h8.2l-1.6 2.5 1.6 2.5H3.2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          <span id="vpn-flag-emoji" hidden></span>
+        </button>
       </div>
     </div>
+
+    <div id="openclaw-panel">
+      <div id="openclaw-bar">
+        <span id="oc-dot"></span>
+        <span id="oc-status">OpenClaw</span>
+        <span id="oc-url"></span>
+        <span class="oc-spacer"></span>
+        <button type="button" class="oc-btn" id="oc-refresh" onclick="refreshOpenClaw()">Refresh</button>
+        <button type="button" class="oc-btn" id="oc-start" onclick="startOpenClaw()" hidden>Start gateway</button>
+        <button type="button" class="oc-btn primary" id="oc-dashboard" onclick="openOpenClawDashboard()" hidden>Open dashboard</button>
+      </div>
+      <div id="oc-detail">
+        <h2>OpenClaw</h2>
+        <p class="oc-sub">Local personal assistant, formerly Clawd, Clawdbot, and Moltbot.</p>
+        <p id="oc-explain"></p>
+        <div id="oc-install-wrap" hidden>
+          <label for="oc-install">Official install command</label>
+          <input id="oc-install" type="text" readonly value="curl -fsSL https://openclaw.ai/install.sh | bash">
+          <button type="button" class="oc-btn" id="oc-copy" onclick="copyOpenClawInstall()">Copy</button>
+        </div>
+        <pre id="oc-log"></pre>
+      </div>
+    </div>
+
+    <div id="board" aria-hidden="true"></div>
 
     <!-- Backdrop -->
     <div id="vpn-overlay" onclick="closeVpnPanel()"></div>
@@ -474,80 +727,14 @@
         <span id="p-status-text">Direct connection</span>
       </div>
 
-      <div class="p-modes">
-        <button class="p-mode sel" id="m-direct" onclick="selectMode('direct')">⊘ Direct</button>
-        <button class="p-mode"     id="m-manual" onclick="selectMode('manual')">⚙ Manual</button>
+      <div class="p-wg on" id="p-wg">
+        <p class="p-wg-note">Hub tabs only. This does not change your system network.</p>
+        <div id="p-wg-list"></div>
+        <p class="p-wg-empty" id="p-wg-empty">No WireGuard configs imported.</p>
+        <p class="p-wg-error" id="p-wg-error"></p>
+        <button type="button" id="p-wg-import" onclick="importWireguard()">Import .conf</button>
+        <button type="button" id="p-wg-disconnect" onclick="disconnectWireguard()" disabled>Disconnect</button>
       </div>
-
-      <div class="p-inputs" id="p-inputs">
-        <select id="p-type">
-          <option value="socks5">SOCKS5</option>
-          <option value="socks4">SOCKS4</option>
-          <option value="http">HTTP</option>
-          <option value="https">HTTPS</option>
-        </select>
-        <input id="p-host" type="text" placeholder="127.0.0.1">
-        <span class="p-sep">:</span>
-        <input id="p-port" type="text" placeholder="1080" maxlength="5">
-      </div>
-
-      <div class="p-tip" id="p-tip">💡 Tor Browser: 127.0.0.1:9050</div>
-
-      <button id="p-apply" onclick="applyProxy()">Apply</button>
-      <button id="p-reset-claude" onclick="resetClaudeSession()">Reset Claude Session</button>
-
-      <div class="p-divider"><span>or use a browser extension</span></div>
-
-      <button id="p-load-ext" onclick="pickExtension()">📁 Load unpacked extension</button>
-
-      <div class="p-ext-head">Free VPN extensions — auto-install</div>
-      <div class="p-ext-note">
-        `Install` downloads the extension into AI Hub. `Enable` loads it into all tabs.
-        Only one extension can be active at a time.
-      </div>
-      <div class="p-ext-warning">
-        Experimental: Electron can install and load these extensions, but some VPN-specific browser APIs
-        like `proxy` / `privacy` are not fully supported, so the real VPN connection may not work reliably.
-        Manual proxy mode remains the primary supported option.
-      </div>
-      <div id="ext-list">
-        <div class="p-ext-item" id="ext-windscribe" data-ext-id="hnmpcagpplmpfojmgmnngilcnanddlhb">
-          <span class="p-ext-name">Windscribe</span>
-          <span class="p-ext-badge">10 GB/mo</span>
-          <span class="p-ext-status">Not installed</span>
-          <button class="p-ext-install" onclick="installExt('hnmpcagpplmpfojmgmnngilcnanddlhb', this)">Install</button>
-          <button class="p-ext-toggle" onclick="toggleExt('hnmpcagpplmpfojmgmnngilcnanddlhb', this)" disabled>Enable</button>
-          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/windscribe-free-vpn-and-a/hnmpcagpplmpfojmgmnngilcnanddlhb')">↗</span>
-        </div>
-        <div class="p-ext-item" id="ext-browsec" data-ext-id="omghfjlpggmjjaagoclmmobgdodcjboh">
-          <span class="p-ext-name">Browsec VPN</span>
-          <span class="p-ext-badge">Updated 2026</span>
-          <span class="p-ext-status">Not installed</span>
-          <button class="p-ext-install" onclick="installExt('omghfjlpggmjjaagoclmmobgdodcjboh', this)">Install</button>
-          <button class="p-ext-toggle" onclick="toggleExt('omghfjlpggmjjaagoclmmobgdodcjboh', this)" disabled>Enable</button>
-          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/browsec-vpn-free-vpn-for/omghfjlpggmjjaagoclmmobgdodcjboh')">↗</span>
-        </div>
-        <div class="p-ext-item" id="ext-veepn" data-ext-id="majdfhpaihoncoakbjgbdhglocklcgno">
-          <span class="p-ext-name">VeePN</span>
-          <span class="p-ext-badge">Free tier</span>
-          <span class="p-ext-status">Not installed</span>
-          <button class="p-ext-install" onclick="installExt('majdfhpaihoncoakbjgbdhglocklcgno', this)">Install</button>
-          <button class="p-ext-toggle" onclick="toggleExt('majdfhpaihoncoakbjgbdhglocklcgno', this)" disabled>Enable</button>
-          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/free-vpn-for-chrome-vpn-p/majdfhpaihoncoakbjgbdhglocklcgno')">↗</span>
-        </div>
-        <div class="p-ext-item" id="ext-switchy" data-ext-id="padekgcemlokbadohgkifijomclgjgif">
-          <span class="p-ext-name">Proxy SwitchyOmega</span>
-          <span class="p-ext-badge">Legacy but alive</span>
-          <span class="p-ext-status">Not installed</span>
-          <button class="p-ext-install" onclick="installExt('padekgcemlokbadohgkifijomclgjgif', this)">Install</button>
-          <button class="p-ext-toggle" onclick="toggleExt('padekgcemlokbadohgkifijomclgjgif', this)" disabled>Enable</button>
-          <span class="p-ext-link" onclick="openExt('https://chromewebstore.google.com/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif')">↗</span>
-        </div>
-      </div>
-
-      <div class="p-divider"><span>installed in AI Hub</span></div>
-      <div id="installed-ext-list"></div>
-      <div id="installed-ext-empty" class="p-ext-empty">No custom extensions installed yet.</div>
 
       <div id="p-msg"></div>
     </div>
@@ -558,22 +745,52 @@
       /* ─────────────────────────────────────────────────────────── */
 
       let activeTabName = null;
-      const tabLoadState = {}; // name → 'start' | 'dom' | 'finish' | 'fail'
-      let currentTheme = localStorage.getItem('aihub-theme') || 'dark';
+      let openclawGatewayUp = false;
+      let openclawSeq = 0;
+      let openclawBusy = false;
+      const tabLoadState = {}; // name → 'start' | 'finish' | 'fail' | 'idle'
+      const tabLoadTimers = {};
+      const TAB_LOAD_SAFETY_MS = 25000;
+      const THEME_ORDER = ['dark', 'light', 'system'];
+      let themePreference = localStorage.getItem('aihub-theme') || 'dark';
+      if (!THEME_ORDER.includes(themePreference)) themePreference = 'dark';
 
-      function applyTheme(theme) {
-        currentTheme = theme;
+      function resolvedTheme() {
+        if (themePreference !== 'system') return themePreference;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+
+      function themeLabel(preference) {
+        if (preference === 'light') return 'Theme: light';
+        if (preference === 'system') return 'Theme: system';
+        return 'Theme: dark';
+      }
+
+      function applyTheme(preference) {
+        themePreference = THEME_ORDER.includes(preference) ? preference : 'dark';
+        const theme = resolvedTheme();
+        document.documentElement.style.colorScheme = theme;
         document.body.dataset.theme = theme;
-        localStorage.setItem('aihub-theme', theme);
+        localStorage.setItem('aihub-theme', themePreference);
         const themeBtn = document.getElementById('theme-btn');
         if (themeBtn) {
-          themeBtn.textContent = theme === 'light' ? '◑ Light' : '◐ Dark';
+          themeBtn.dataset.preference = themePreference;
+          themeBtn.title = themeLabel(themePreference);
+          themeBtn.setAttribute('aria-label', themeBtn.title);
+        }
+        if (window.electronAPI && window.electronAPI.setContentTheme) {
+          window.electronAPI.setContentTheme(themePreference);
         }
       }
 
       function toggleTheme() {
-        applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        const index = THEME_ORDER.indexOf(themePreference);
+        applyTheme(THEME_ORDER[(index + 1) % THEME_ORDER.length]);
       }
+
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (themePreference === 'system') applyTheme('system');
+      });
 
       function reloadPage(ignoreCache) {
         window.electronAPI.reloadActiveTab(Boolean(ignoreCache));
@@ -590,16 +807,21 @@
         setActive(name);
         window.electronAPI.switchTab(name);
 
-        // Sync progress bar to this tab's current state
+        // Bar only while this tab is still loading. Finished, failed, and idle stay hidden.
         const state = tabLoadState[name];
-        if (state === 'start') { resetProgress(); startProgress(); }
-        else if (state === 'dom') { resetProgress(); startProgress(); domProgress(); }
-        else hideProgress();
+        if (state === 'start') {
+          resetProgress();
+          startProgress();
+        } else {
+          setTabSpinner(name, false);
+          hideProgress();
+        }
       }
 
       window.electronAPI.onTabActive(name => {
         activeTabName = name;
         setActive(name);
+        syncOpenClawShell(name);
       });
 
       /* ─────────────────────────────────────────────────────────── */
@@ -609,6 +831,7 @@
       let progressPct = 0;
       let progressCrawlTimer = null;
       let progressHungTimer  = null;
+      let progressToken = 0;
 
       const bar = () => document.getElementById('progress-bar');
 
@@ -629,16 +852,19 @@
       }
 
       function startProgress() {
+        const token = ++progressToken;
         const b = bar();
         b.style.opacity = '1';
 
         // Quick jump to 15%
         requestAnimationFrame(() => {
+          if (token !== progressToken) return;
           b.style.transition = 'width 0.2s ease';
           setProgressWidth(15);
 
           // Crawl slowly toward 75%
           progressCrawlTimer = setInterval(() => {
+            if (token !== progressToken) return;
             if (progressPct < 75) {
               setProgressWidth(progressPct + (75 - progressPct) * 0.055);
             }
@@ -647,19 +873,14 @@
 
         // Hung detection: >10s still loading → turn orange + pulse
         progressHungTimer = setTimeout(() => {
+          if (token !== progressToken) return;
           b.style.background = 'linear-gradient(90deg, #e09a3a, #f0bc6a)';
           b.style.animation  = 'pulse-bar 1.4s ease-in-out infinite';
         }, 10000);
       }
 
-      function domProgress() {
-        clearInterval(progressCrawlTimer);
-        const b = bar();
-        b.style.transition = 'width 0.45s ease';
-        if (progressPct < 72) setProgressWidth(72);
-      }
-
       function finishProgress(failed) {
+        const token = progressToken;
         clearInterval(progressCrawlTimer);
         clearTimeout(progressHungTimer);
         const b = bar();
@@ -668,39 +889,82 @@
         b.style.transition = 'width 0.12s ease';
         setProgressWidth(100);
         setTimeout(() => {
+          if (token !== progressToken) return;
           b.style.transition = 'opacity 0.28s';
           b.style.opacity    = '0';
-          setTimeout(() => resetProgress(), 300);
+          setTimeout(() => {
+            if (token !== progressToken) return;
+            resetProgress();
+          }, 300);
         }, 180);
       }
 
       function hideProgress() {
+        const token = progressToken;
         clearInterval(progressCrawlTimer);
         clearTimeout(progressHungTimer);
         const b = bar();
         b.style.animation  = '';
         b.style.transition = 'opacity 0.15s';
         b.style.opacity    = '0';
-        setTimeout(() => resetProgress(), 200);
+        setTimeout(() => {
+          if (token !== progressToken) return;
+          resetProgress();
+        }, 200);
       }
 
       /* ─────────────────────────────────────────────────────────── */
       /* Tab progress events from main process                        */
       /* ─────────────────────────────────────────────────────────── */
 
-      window.electronAPI.onTabProgress((name, event) => {
-        tabLoadState[name] = event;
+      function clearTabLoadTimer(name) {
+        if (!tabLoadTimers[name]) return;
+        clearTimeout(tabLoadTimers[name]);
+        delete tabLoadTimers[name];
+      }
 
-        // Spinner on the tab itself (for background tabs)
+      function setTabSpinner(name, loading) {
         const tabEl = document.querySelector(`.tab[data-name="${name}"]`);
-        if (tabEl) tabEl.classList.toggle('loading', event === 'start' || event === 'dom');
+        if (tabEl) tabEl.classList.toggle('loading', Boolean(loading));
+      }
 
-        // Progress bar only for the active tab
+      function beginTabLoad(name) {
+        clearTabLoadTimer(name);
+        tabLoadState[name] = 'start';
+        setTabSpinner(name, true);
+        tabLoadTimers[name] = setTimeout(() => {
+          delete tabLoadTimers[name];
+          settleTabLoad(name, 'idle');
+        }, TAB_LOAD_SAFETY_MS);
+
+        if (name === activeTabName) {
+          resetProgress();
+          startProgress();
+        }
+      }
+
+      function settleTabLoad(name, event) {
+        clearTabLoadTimer(name);
+        const wasLoading = tabLoadState[name] === 'start';
+        tabLoadState[name] = event === 'fail' ? 'fail' : (event === 'finish' ? 'finish' : 'idle');
+        setTabSpinner(name, false);
+
         if (name !== activeTabName) return;
-        if      (event === 'start')  { resetProgress(); startProgress(); }
-        else if (event === 'dom')    { domProgress(); }
-        else if (event === 'finish') { finishProgress(false); }
-        else if (event === 'fail')   { finishProgress(true); }
+        if (event === 'fail') {
+          finishProgress(true);
+          return;
+        }
+        if (wasLoading) finishProgress(false);
+        else hideProgress();
+      }
+
+      window.electronAPI.onTabProgress((name, event) => {
+        if (event === 'start') {
+          beginTabLoad(name);
+          return;
+        }
+        // "dom" is ignored so it cannot pin the spinner after the document is ready.
+        if (event === 'finish' || event === 'fail') settleTabLoad(name, event);
       });
 
       /* ─────────────────────────────────────────────────────────── */
@@ -711,9 +975,24 @@
       let proxyMode = 'direct';
       let extensionRegistry = [];
 
+      function shellInsetHeight() {
+        let height = 60;
+        if (activeTabName === 'OpenClaw' && openclawGatewayUp) height += 40;
+        if (panelOpen) {
+          const panel = document.getElementById('vpn-panel');
+          height += (panel ? panel.offsetHeight : 0) + 6;
+        }
+        return height;
+      }
+
+      function layoutInset() {
+        const height = shellInsetHeight();
+        document.documentElement.style.setProperty("--shell-inset", height + "px");
+        window.electronAPI.setTopBarHeight(height);
+      }
+
       function pushBrowserView() {
-        const h = document.getElementById('vpn-panel').offsetHeight;
-        window.electronAPI.setTopBarHeight(60 + h + 6);
+        requestAnimationFrame(layoutInset);
       }
 
       function openVpnPanel() {
@@ -727,17 +1006,14 @@
         panelOpen = false;
         document.getElementById('vpn-panel').classList.remove('open');
         document.getElementById('vpn-overlay').style.display = 'none';
-        window.electronAPI.setTopBarHeight(60);
+        layoutInset();
       }
 
       function toggleVpnPanel() { panelOpen ? closeVpnPanel() : openVpnPanel(); }
 
-      function selectMode(mode) {
-        proxyMode = mode;
-        document.getElementById('m-direct').classList.toggle('sel', mode === 'direct');
-        document.getElementById('m-manual').classList.toggle('sel', mode === 'manual');
-        document.getElementById('p-inputs').classList.toggle('on', mode === 'manual');
-        document.getElementById('p-tip').classList.toggle('on', mode === 'manual');
+      function selectMode() {
+        const wgPanel = document.getElementById('p-wg');
+        if (wgPanel) wgPanel.classList.add('on');
         if (panelOpen) requestAnimationFrame(pushBrowserView);
       }
 
@@ -755,6 +1031,8 @@
             await window.electronAPI.clearProxy();
             setProxyStatus(false, 'Direct connection');
             showMsg('Proxy disabled', 'ok');
+          } else if (proxyMode === 'wireguard') {
+            showMsg('Choose a config and press Connect', 'err');
           } else {
             const type = document.getElementById('p-type').value;
             const host = document.getElementById('p-host').value.trim();
@@ -796,12 +1074,195 @@
         }
       }
 
-      function setProxyStatus(active, label) {
+      function countryFlag(code) {
+        if (!/^[A-Z]{2}$/.test(code || '')) return '';
+        return String.fromCodePoint(...code.split('').map(ch => 127397 + ch.charCodeAt(0)));
+      }
+
+      function paintLocationFlag(active, label, countryCode) {
+        const btn = document.getElementById('vpn-btn');
+        const icon = document.getElementById('vpn-flag-icon');
+        const emoji = document.getElementById('vpn-flag-emoji');
+        if (!btn || !icon || !emoji) return;
+        btn.classList.toggle('proxy-on', active);
+        const title = label || 'WireGuard';
+        btn.title = title;
+        btn.setAttribute('aria-label', title);
+        const flag = active ? countryFlag(countryCode) : '';
+        if (flag) {
+          emoji.hidden = false;
+          emoji.textContent = flag;
+          icon.hidden = true;
+        } else {
+          emoji.hidden = true;
+          emoji.textContent = '';
+          icon.hidden = false;
+        }
+      }
+
+      function setProxyStatus(active, label, countryCode) {
         document.getElementById('p-dot').classList.toggle('on', active);
         const t = document.getElementById('p-status-text');
         t.classList.toggle('on', active);
         t.textContent = label;
-        document.getElementById('vpn-btn').classList.toggle('proxy-on', active);
+        paintLocationFlag(active, label, countryCode);
+      }
+
+      /* ─────────────────────────────────────────────────────────── */
+      /* WireGuard (hub tabs only)                                    */
+      /* ─────────────────────────────────────────────────────────── */
+
+      let wgState = { revision: -1, connectedId: null, pendingId: null, error: null, configs: [] };
+
+      function onWireguardStatus(status) {
+        if (!status || !Array.isArray(status.configs)) return;
+        if (typeof status.revision === 'number' && status.revision < wgState.revision) return;
+        const previousError = wgState.error;
+        const previousConnected = wgState.connectedId;
+        wgState = status;
+        renderWireguard(status);
+
+        if (status.connectedId) {
+          const cfg = status.configs.find(item => item.id === status.connectedId);
+          const place = status.location || (cfg && cfg.location) || (cfg && cfg.name) || 'WireGuard';
+          const code = status.countryCode || (cfg && cfg.countryCode) || '';
+          setProxyStatus(true, place, code);
+          if (previousConnected !== status.connectedId) selectMode();
+        } else if (status.phase === 'connecting') {
+          const cfg = status.configs.find(item => item.id === status.pendingId);
+          setProxyStatus(true, cfg ? ('Connecting ' + cfg.name) : 'Connecting…', '');
+          selectMode();
+        } else if (status.error || previousConnected) {
+          setProxyStatus(false, status.error ? 'WireGuard failed' : 'Direct connection', '');
+          if (status.error && status.error !== previousError) selectMode();
+        }
+
+        if (status.error && status.error !== previousError) showMsg(status.error, 'err');
+      }
+
+      function renderWireguard(status) {
+        const list = document.getElementById('p-wg-list');
+        const empty = document.getElementById('p-wg-empty');
+        const errorEl = document.getElementById('p-wg-error');
+        const disconnect = document.getElementById('p-wg-disconnect');
+        if (!list || !empty) return;
+        list.textContent = '';
+        empty.hidden = status.configs.length > 0;
+        if (errorEl) errorEl.textContent = status.error || '';
+        if (disconnect) disconnect.disabled = !status.connectedId;
+
+        const busy = status.phase === 'connecting';
+        status.configs.forEach(cfg => {
+          const row = document.createElement('div');
+          row.className = 'p-wg-item';
+          if (cfg.id === status.connectedId) row.classList.add('on');
+
+          const name = document.createElement('div');
+          name.className = 'p-wg-name';
+          name.textContent = cfg.name || 'WireGuard';
+
+          const meta = document.createElement('div');
+          meta.className = 'p-wg-meta';
+          const place = cfg.id === status.connectedId ? (status.location || cfg.location || '') : (cfg.location || '');
+          meta.textContent = [place, cfg.endpointHost].filter(Boolean).join(' · ');
+
+          const actions = document.createElement('div');
+          actions.className = 'p-wg-actions';
+
+          const connect = document.createElement('button');
+          connect.type = 'button';
+          connect.className = 'p-wg-btn';
+          if (cfg.id === status.connectedId) {
+            connect.textContent = 'Connected';
+            connect.disabled = true;
+          } else {
+            connect.textContent = status.connectedId ? 'Switch location' : 'Connect';
+            connect.disabled = busy;
+            connect.onclick = () => connectWireguard(cfg.id);
+          }
+
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'p-wg-btn danger';
+          remove.textContent = 'Remove';
+          remove.disabled = busy;
+          remove.onclick = () => removeWireguard(cfg.id);
+
+          actions.appendChild(connect);
+          actions.appendChild(remove);
+          row.appendChild(name);
+          row.appendChild(meta);
+          row.appendChild(actions);
+          list.appendChild(row);
+        });
+        if (panelOpen) requestAnimationFrame(pushBrowserView);
+      }
+
+      async function connectWireguard(id) {
+        clearMsg();
+        try {
+          const res = await window.electronAPI.connectWireguard(id);
+          if (res && res.status) onWireguardStatus(res.status);
+          if (res && res.success) showMsg('WireGuard connected', 'ok');
+          else if (!res || !res.status) showMsg((res && res.error) || 'Could not connect', 'err');
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        }
+      }
+
+      async function disconnectWireguard() {
+        clearMsg();
+        try {
+          const res = await window.electronAPI.disconnectWireguard();
+          if (res && res.status) onWireguardStatus(res.status);
+          if (res && res.success) showMsg('WireGuard disconnected', 'ok');
+          else if (!res || !res.status) showMsg((res && res.error) || 'Could not disconnect', 'err');
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        }
+      }
+
+      async function importWireguard() {
+        clearMsg();
+        const btn = document.getElementById('p-wg-import');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Importing…';
+        }
+        try {
+          const res = await window.electronAPI.importWireguardConfigs();
+          if (!res || res.canceled) return;
+          if (res.status) onWireguardStatus(res.status);
+          if (res.error) showMsg(res.error, 'err');
+          else if (res.imported) {
+            showMsg('Imported ' + res.imported + (res.imported === 1 ? ' config' : ' configs'), 'ok');
+          }
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Import .conf';
+          }
+          if (panelOpen) requestAnimationFrame(pushBrowserView);
+        }
+      }
+
+      async function removeWireguard(id) {
+        clearMsg();
+        try {
+          const res = await window.electronAPI.removeWireguardConfig(id);
+          if (res && res.status) onWireguardStatus(res.status);
+          if (!res || !res.success) showMsg((res && res.error) || 'Could not remove config', 'err');
+        } catch (e) {
+          showMsg('Error: ' + e.message, 'err');
+        }
+      }
+
+      function initWireguard() {
+        if (!window.electronAPI || !window.electronAPI.onWireguardStatus) return;
+        window.electronAPI.onWireguardStatus(onWireguardStatus);
+        window.electronAPI.listWireguardConfigs().then(onWireguardStatus).catch(() => {});
       }
 
       /* ─────────────────────────────────────────────────────────── */
@@ -945,6 +1406,7 @@
       function renderInstalledExtensions() {
         const container = document.getElementById('installed-ext-list');
         const empty = document.getElementById('installed-ext-empty');
+        if (!container || !empty) return;
         container.innerHTML = '';
 
         if (!extensionRegistry.length) {
@@ -1023,8 +1485,236 @@
         el.textContent = '';
       }
 
-      applyTheme(currentTheme);
+      function syncOpenClawShell(name) {
+        if (name !== 'OpenClaw') {
+          openclawSeq += 1;
+          hideOpenClawPanel();
+          return;
+        }
+        refreshOpenClaw();
+      }
+
+      function hideOpenClawPanel() {
+        const panel = document.getElementById('openclaw-panel');
+        if (panel) panel.classList.remove('visible', 'expanded');
+        layoutInset();
+      }
+
+      function setOpenClawBusy(busy) {
+        openclawBusy = busy;
+        ['oc-refresh', 'oc-start', 'oc-dashboard', 'oc-copy'].forEach(id => {
+          const button = document.getElementById(id);
+          if (button) button.disabled = busy;
+        });
+      }
+
+      function renderOpenClaw(status, logText) {
+        const panel = document.getElementById('openclaw-panel');
+        if (!panel || !status) return;
+        const board = document.getElementById('board');
+        if (board && board.classList.contains('visible')) {
+          hideOpenClawPanel();
+          return;
+        }
+        openclawGatewayUp = Boolean(status.gatewayUp);
+        panel.classList.add('visible');
+        panel.classList.toggle('expanded', !openclawGatewayUp);
+
+        const dot = document.getElementById('oc-dot');
+        dot.classList.toggle('on', openclawGatewayUp);
+        dot.classList.toggle('wait', status.phase === 'checking');
+
+        const statusEl = document.getElementById('oc-status');
+        if (status.phase === 'checking') statusEl.textContent = 'Checking OpenClaw…';
+        else if (!status.installed) statusEl.textContent = 'Not installed';
+        else if (openclawGatewayUp) statusEl.textContent = 'Installed · Gateway up';
+        else statusEl.textContent = 'Installed · Gateway down';
+        statusEl.title = logText || status.error || '';
+
+        document.getElementById('oc-url').textContent = status.url || '';
+
+        const detail = document.getElementById('oc-detail');
+        detail.hidden = openclawGatewayUp;
+        const explain = document.getElementById('oc-explain');
+        const installWrap = document.getElementById('oc-install-wrap');
+        if (status.phase === 'checking') {
+          explain.textContent = 'Checking whether the OpenClaw Gateway is running.';
+          installWrap.hidden = true;
+        } else if (!status.installed) {
+          explain.textContent = 'OpenClaw is not installed on this computer. The installer starts a local Gateway, and its chat UI is a normal web page. Run the official command in Terminal, then click Refresh. AI Hub will not run the installer for you.';
+          installWrap.hidden = false;
+        } else if (!openclawGatewayUp) {
+          explain.textContent = 'OpenClaw is installed, but the Gateway is not reachable. Start the background Gateway, then use Open dashboard so this window gets its own one-time pairing link.';
+          installWrap.hidden = true;
+        } else {
+          explain.textContent = '';
+          installWrap.hidden = true;
+        }
+
+        document.getElementById('oc-start').hidden = status.installed !== true || openclawGatewayUp || status.phase === 'checking';
+        document.getElementById('oc-dashboard').hidden = !openclawGatewayUp;
+
+        const log = document.getElementById('oc-log');
+        const text = [!openclawGatewayUp ? status.error : '', logText || ''].filter(Boolean).join('\n\n');
+        log.textContent = text;
+        layoutInset();
+      }
+
+      async function refreshOpenClaw() {
+        if (!window.electronAPI.openclawStatus) return;
+        const seq = ++openclawSeq;
+        if (activeTabName !== 'OpenClaw') {
+          hideOpenClawPanel();
+          return;
+        }
+        const currentUrl = document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/';
+        if (openclawGatewayUp) {
+          const panel = document.getElementById('openclaw-panel');
+          panel.classList.add('visible');
+          panel.classList.remove('expanded');
+          document.getElementById('oc-detail').hidden = true;
+          document.getElementById('oc-dot').classList.add('wait');
+          document.getElementById('oc-status').textContent = 'Checking OpenClaw…';
+          layoutInset();
+        } else {
+          renderOpenClaw({
+            gatewayUp: false,
+            phase: 'checking',
+            url: currentUrl,
+          });
+        }
+        setOpenClawBusy(true);
+        try {
+          const status = await window.electronAPI.openclawStatus();
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          renderOpenClaw(status);
+        } catch (err) {
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          renderOpenClaw({
+            installed: true,
+            gatewayUp: false,
+            phase: 'stopped',
+            url: 'http://127.0.0.1:18789/',
+            error: err.message || 'Could not check OpenClaw',
+          });
+        } finally {
+          if (seq === openclawSeq) setOpenClawBusy(false);
+        }
+      }
+
+      async function startOpenClaw() {
+        if (openclawBusy || !window.electronAPI.openclawStart) return;
+        const seq = ++openclawSeq;
+        setOpenClawBusy(true);
+        const button = document.getElementById('oc-start');
+        button.textContent = 'Starting…';
+        try {
+          const result = await window.electronAPI.openclawStart();
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          if (result && result.status) renderOpenClaw(result.status);
+          else renderOpenClaw({
+            installed: true,
+            gatewayUp: false,
+            phase: 'stopped',
+            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
+            error: (result && (result.error || result.log)) || 'Could not start the Gateway',
+          });
+        } catch (err) {
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          renderOpenClaw({
+            installed: true,
+            serviceInstalled: true,
+            gatewayUp: false,
+            phase: 'stopped',
+            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
+            error: err.message || 'Could not start the Gateway',
+          });
+        } finally {
+          button.textContent = 'Start gateway';
+          if (seq === openclawSeq) setOpenClawBusy(false);
+        }
+      }
+
+      async function openOpenClawDashboard() {
+        if (openclawBusy || !window.electronAPI.openclawDashboard) return;
+        const seq = ++openclawSeq;
+        setOpenClawBusy(true);
+        const button = document.getElementById('oc-dashboard');
+        button.textContent = 'Opening…';
+        try {
+          const result = await window.electronAPI.openclawDashboard();
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          if (!result || !result.success) {
+            renderOpenClaw({
+              installed: true,
+              gatewayUp: openclawGatewayUp,
+              phase: openclawGatewayUp ? 'running' : 'stopped',
+              url: (result && result.url) || document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
+              error: (result && result.error) || 'Could not open the dashboard',
+            });
+            return;
+          }
+          renderOpenClaw({
+            installed: true,
+            gatewayUp: true,
+            phase: 'running',
+            url: result.url || document.getElementById('oc-url').textContent,
+            error: null,
+          }, result.error || '');
+        } catch (err) {
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          renderOpenClaw({
+            installed: true,
+            gatewayUp: openclawGatewayUp,
+            phase: openclawGatewayUp ? 'running' : 'stopped',
+            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
+            error: err.message || 'Could not open the dashboard',
+          });
+        } finally {
+          button.textContent = 'Open dashboard';
+          if (seq === openclawSeq) setOpenClawBusy(false);
+        }
+      }
+
+      function copyOpenClawInstall() {
+        const input = document.getElementById('oc-install');
+        const button = document.getElementById('oc-copy');
+        const text = input ? input.value : '';
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); } catch {}
+        area.remove();
+        if (button) {
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+        }
+      }
+
+      if (window.electronAPI.onOpenClawDown) {
+        window.electronAPI.onOpenClawDown((info) => {
+          if (activeTabName !== 'OpenClaw') return;
+          openclawSeq += 1;
+          renderOpenClaw({
+            installed: true,
+            serviceInstalled: true,
+            gatewayUp: false,
+            phase: 'stopped',
+            url: (info && info.url) || 'http://127.0.0.1:18789/',
+            error: (info && info.error) || 'Gateway is not reachable',
+          });
+          setOpenClawBusy(false);
+        });
+      }
+
+      applyTheme(themePreference);
       refreshExtensions();
+      initWireguard();
+      layoutInset();
     </script>
+    <script src="board.js"></script>
   </body>
 </html>
