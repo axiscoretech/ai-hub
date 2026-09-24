@@ -7,7 +7,7 @@ const LOGIN_URLS = {
   Claude: "https://claude.ai/login",
   Gemini: "https://gemini.google.com/",
   DeepSeek: "https://chat.deepseek.com/sign_in",
-  Qwen: "https://chat.qwenlm.ai/",
+  Qwen: "https://chat.qwen.ai/",
   Perplexity: "https://www.perplexity.ai/",
   Mistral: "https://chat.mistral.ai/",
   Kimi: "https://www.kimi.com/",

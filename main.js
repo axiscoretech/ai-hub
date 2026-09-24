@@ -53,7 +53,7 @@ const tabs = {
   "Claude":     "https://claude.ai/",
   "Gemini":     "https://gemini.google.com/",
   "DeepSeek":   "https://chat.deepseek.com/",
-  "Qwen":       "https://chat.qwenlm.ai/",
+  "Qwen":       "https://chat.qwen.ai/",
   "Perplexity": "https://www.perplexity.ai/",
   "Mistral":    "https://chat.mistral.ai/",
   "Kimi":       "https://www.kimi.com/",
@@ -512,7 +512,7 @@ function paintViewTheme(view) {
 
 function applyContentTheme(theme) {
   contentTheme = normalizeTheme(theme);
-  nativeTheme.themeSource = contentTheme;
+  if (nativeTheme.themeSource !== contentTheme) nativeTheme.themeSource = contentTheme;
   const color = themeColor();
 
   if (win && !win.isDestroyed()) {
@@ -536,19 +536,14 @@ function applyContentTheme(theme) {
   }
 }
 
-let applyingSystemTheme = false;
 nativeTheme.on("updated", () => {
-  if (contentTheme !== "system" || applyingSystemTheme) return;
-  applyingSystemTheme = true;
-  try { applyContentTheme("system"); }
-  finally { applyingSystemTheme = false; }
+  if (contentTheme !== "system") return;
+  applyContentTheme("system");
 });
 
 function attachGuestTheme(webContents) {
   if (!webContents) return;
-  const apply = () => syncGuestColorScheme(webContents);
-  webContents.on("dom-ready", apply);
-  webContents.on("did-finish-load", apply);
+  webContents.on("did-finish-load", () => syncGuestColorScheme(webContents));
 }
 
 function getTabUrl(name) {
@@ -565,6 +560,9 @@ function getTabOrigin(name) {
 
 // chat.openai.com is the configured ChatGPT URL; the app now lives on chatgpt.com.
 const CHATGPT_HOSTS = new Set(["chat.openai.com", "chatgpt.com", "www.chatgpt.com"]);
+// chat.qwenlm.ai permanently redirects to chat.qwen.ai. The page also treats
+// these registrable domains as its own hosts.
+const QWEN_HOSTS = ["qwen.ai", "qwenlm.ai", "qwenlm.io", "qwenchat.com"];
 
 function isServiceUrlForTab(name, url) {
   try {
@@ -576,6 +574,8 @@ function isServiceUrlForTab(name, url) {
     const target = new URL(url);
     if (target.origin === tabOrigin) return true;
     const tabHost = new URL(tabOrigin).hostname;
+    if (target.protocol !== "https:" && target.protocol !== "http:") return false;
+    if (name === "Qwen" && QWEN_HOSTS.some((host) => hostnameMatches(target.hostname, host))) return true;
     if (target.protocol !== "https:") return false;
     return CHATGPT_HOSTS.has(tabHost) && CHATGPT_HOSTS.has(target.hostname);
   } catch {
@@ -608,6 +608,7 @@ function inAppHostsForTab(tabName) {
   if (tabName === "ChatGPT") hosts.push("chat.openai.com", "chatgpt.com");
   if (tabName === "Claude") hosts.push("claude.ai");
   if (tabName === "Gemini") hosts.push("gemini.google.com");
+  if (tabName === "Qwen") hosts.push(...QWEN_HOSTS);
   return hosts;
 }
 
@@ -992,8 +993,13 @@ function createTab(name, url = getTabUrl(name), options = {}) {
   attachReloadShortcuts(view.webContents);
   attachBoardShortcut(view.webContents);
   ignoreUnloadBlock(view.webContents);
+  let titleNotedAt = 0;
   view.webContents.on("page-title-updated", () => {
-    if (shouldNoteTaskActivity(name)) void tasks.noteActivity(name);
+    if (!shouldNoteTaskActivity(name)) return;
+    const now = Date.now();
+    if (now - titleNotedAt < 8000) return;
+    titleNotedAt = now;
+    void tasks.noteActivity(name);
   });
 
   // Cross-document main-frame loads only. Subframe and same-document
@@ -1160,9 +1166,22 @@ function switchTab(name) {
 }
 
 function resizeView(view) {
+  if (!win || win.isDestroyed() || !view) return;
   const [width, height] = win.getContentSize();
-  view.setBounds({ x: 0, y: topBarHeight, width, height: height - topBarHeight });
-  view.setAutoResize({ width: true, height: true });
+  const bounds = {
+    x: 0,
+    y: topBarHeight,
+    width,
+    height: Math.max(0, height - topBarHeight),
+  };
+  let current = null;
+  try { current = view.getBounds(); } catch {}
+  if (current
+    && current.x === bounds.x
+    && current.y === bounds.y
+    && current.width === bounds.width
+    && current.height === bounds.height) return;
+  view.setBounds(bounds);
 }
 
 function isBoardWorkspace() {
@@ -1824,7 +1843,6 @@ app.on("browser-window-created", (_event, window) => {
     try { window.setBackgroundColor(themeColor()); } catch {}
     syncGuestColorScheme(window.webContents);
   };
-  window.webContents.on("dom-ready", apply);
   window.webContents.on("did-finish-load", apply);
 });
 

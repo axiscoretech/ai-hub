@@ -202,7 +202,7 @@ Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscor
 | | Grok | [grok.com](https://grok.com) |
 | | Perplexity | [perplexity.ai](https://www.perplexity.ai) |
 | | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
-| | Qwen | [chat.qwenlm.ai](https://chat.qwenlm.ai) |
+| | Qwen | [chat.qwen.ai](https://chat.qwen.ai) |
 | | Kimi | [kimi.com](https://www.kimi.com) |
 | | OpenClaw | local gateway, usually `127.0.0.1:18789` |
 
