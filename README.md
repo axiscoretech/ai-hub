@@ -98,16 +98,24 @@ If the gateway is already running, the OpenClaw tab opens its dashboard. If it i
 
 ## Quick Start
 
-### macOS
+### macOS — one command
+
+This downloads the latest release, puts **AI Hub.app** in `/Applications`, and opens it. You do not need to allow the app in System Settings.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
+```
+
+Apple Silicon and Intel are picked automatically.
+
+### macOS — DMG
 
 1. Download the latest release from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
 2. Open the `.dmg`
 3. Drag **AI Hub.app** into `/Applications`
 4. Launch the app
 
-On first launch, macOS may block the app because it was downloaded outside the App Store. Open **System Settings → Privacy & Security**, scroll to the security section at the bottom, and click **Open Anyway** next to AI Hub (or confirm when prompted). You only need to do this once.
-
-If macOS says the app is damaged, run:
+A hand-downloaded DMG is still marked as coming from the internet. Until a release is signed and notarized with Apple, macOS may block that copy. The one-command install above clears that mark for you. If you already dragged the app in by hand and macOS says it is damaged or from an unidentified developer:
 
 ```bash
 xattr -cr /Applications/AI\ Hub.app
@@ -125,7 +133,17 @@ Then launch it again.
 
 ## Install
 
-### macOS — Direct Download _(recommended for now)_
+### macOS — One command _(recommended)_
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
+```
+
+The app lands in `/Applications` and opens. The script removes the quarantine flag, so System Settings does not ask you to allow it.
+
+A notarized build, once Apple signing secrets are set, is the step that lets a plain DMG open with no script and no warning. Setup for that is in [`docs/signing.md`](docs/signing.md).
+
+### macOS — Direct Download
 
 Download the right file for your Mac from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest):
 
@@ -151,9 +169,7 @@ brew tap axiscoretech/tap
 brew install --cask ai-hub
 ```
 
-Homebrew handles Gatekeeper for you — you usually do not need to allow the app manually in System Settings.
-
-Direct DMG install is currently the safest option while signed notarized releases are still being finalized.
+Homebrew also puts the app in `/Applications` and skips the manual Gatekeeper prompt. The one-command install above does the same thing without Homebrew.
 
 ### Windows — Direct Download
 
