@@ -16,7 +16,9 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
-![AI Hub Compare board](assets/screenshot.png)
+![AI Hub, latest version](assets/screenshot.png)
+
+*Latest version. The first screen is the service you open, not Compare.*
 
 ---
 
@@ -56,7 +58,7 @@ The service names are tabs. The buttons on the right are icons:
 
 ## Compare
 
-![Compare board with two tasks](assets/screenshot.png)
+![Compare board with two tasks](assets/screenshot-compare.png)
 
 Compare is a board in the shell, not a second account system.
 
