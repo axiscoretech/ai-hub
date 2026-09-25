@@ -142,19 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.
 
 The script installs the latest release into `/Applications` and opens it. A notarized build opens without an extra prompt. If the signature is not accepted, the script clears the quarantine flag once.
 
-<details>
-<summary>If macOS still blocks the app</summary>
-
-This happens when the app was downloaded by hand and is not notarized yet.
-
-1. Open **System Settings**.
-2. Go to **Privacy & Security**.
-3. Scroll to the **Security** section at the bottom.
-4. Next to the message that AI Hub was blocked, click **Open Anyway**, then confirm **Open**.
-
-If that button is not there: in Finder open **Applications**, right-click **AI Hub**, choose **Open**, and confirm **Open** in the dialog.
-
-</details>
+If macOS still blocks the app after this script, use the steps under the DMG download below.
 
 ### macOS — DMG
 
@@ -163,13 +151,33 @@ If that button is not there: in Finder open **Applications**, right-click **AI H
 3. Drag **AI Hub.app** into `/Applications`
 4. Launch the app
 
-Use the Apple Settings steps above if macOS refuses the first launch.
+Before you open the file, compare its SHA-256 with the digest GitHub shows next to that file on the release page. On a Mac: `shasum -a 256 ~/Downloads/AI-Hub-x.x.x.dmg` (Apple Silicon builds are named `AI-Hub-x.x.x-arm64.dmg`). The same hashes are in the `SHA256SUMS` file on that page.
+
+<details>
+<summary>macOS says the app can't be opened?</summary>
+
+![Allow AI Hub on macOS](assets/install-macos.gif)
+
+The pictures follow macOS 15 and later. The words on your Mac can differ. Click **Done**, then **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway**. Confirm, then enter your Mac password. You do this once for each downloaded version.
+
+</details>
 
 ### Windows
 
 1. Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
 2. Run the installer
 3. Launch **AI Hub** from the Start Menu or Desktop shortcut
+
+Before you run it, compare its SHA-256 with the digest GitHub shows next to that file on the release page. In PowerShell: `Get-FileHash .\AI-Hub-x.x.x-Setup.exe -Algorithm SHA256`.
+
+<details>
+<summary>SmartScreen says it protected your PC?</summary>
+
+![Allow AI Hub on Windows](assets/install-windows.gif)
+
+Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then **Run anyway**. The warning is there because the installer is not code-signed yet.
+
+</details>
 
 ### Linux
 
@@ -200,7 +208,16 @@ Download the right file for your Mac from [**Releases**](https://github.com/axis
 
 Open the DMG and drag **AI Hub.app** into `/Applications`.
 
-If macOS blocks this copy, use **System Settings → Privacy & Security → Security → Open Anyway**, or right-click **AI Hub** in **Applications** and choose **Open**.
+Before you open the file, compare its SHA-256 with the digest GitHub shows next to that file on the release page. On a Mac: `shasum -a 256 ~/Downloads/AI-Hub-x.x.x.dmg` (Apple Silicon builds are named `AI-Hub-x.x.x-arm64.dmg`).
+
+<details>
+<summary>macOS says the app can't be opened?</summary>
+
+![Allow AI Hub on macOS](assets/install-macos.gif)
+
+The pictures follow macOS 15 and later. The words on your Mac can differ. Click **Done**, then **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway**. Confirm, then enter your Mac password. You do this once for each downloaded version.
+
+</details>
 
 ### macOS — Homebrew
 
@@ -218,6 +235,17 @@ Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscor
 | Windows | File |
 |---------|------|
 | 64-bit (x64) | `AI-Hub-x.x.x-Setup.exe` |
+
+Before you run it, compare its SHA-256 with the digest GitHub shows next to that file on the release page. In PowerShell: `Get-FileHash .\AI-Hub-x.x.x-Setup.exe -Algorithm SHA256`.
+
+<details>
+<summary>SmartScreen says it protected your PC?</summary>
+
+![Allow AI Hub on Windows](assets/install-windows.gif)
+
+Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then **Run anyway**. The warning is there because the installer is not code-signed yet.
+
+</details>
 
 ---
 

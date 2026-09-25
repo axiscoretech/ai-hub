@@ -8,6 +8,7 @@
 - OpenClaw install and update ask first. The installer is only `https://openclaw.ai/install.sh`.
 - Tunnel tabs block WebRTC UDP that would skip the SOCKS proxy, including while the kill switch is on.
 - A downloaded app update is offered only after its SHA-256 matches the release checksum.
+- The README shows how to allow an unsigned Mac or Windows download, and how to check that file's SHA-256 on the release page.
 
 ## 1.4.0
 
