@@ -46,22 +46,33 @@ function sanitizeHttpsUrl(value) {
   return parsed.href;
 }
 
-function freshAccount(label) {
-  return { id: DEFAULT_ACCOUNT, label: label || "Default" };
+function freshAccount(label, route) {
+  return {
+    id: DEFAULT_ACCOUNT,
+    label: label || "Default",
+    route: route === "direct" ? "direct" : "tunnel",
+  };
+}
+
+function accountRoute(serviceId, account, inherited) {
+  if (serviceId === OPENCLAW_ID) return "direct";
+  if (account && (account.route === "direct" || account.route === "tunnel")) return account.route;
+  return inherited === "direct" ? "direct" : "tunnel";
 }
 
 function freshService(builtin, order) {
+  const route = builtin.id === OPENCLAW_ID ? "direct" : "tunnel";
   return {
     id: builtin.id,
     name: builtin.name,
     url: builtin.url,
     builtin: true,
-    route: builtin.id === OPENCLAW_ID ? "direct" : "tunnel",
+    route,
     hidden: false,
     order,
     zoom: 1,
     activeAccountId: DEFAULT_ACCOUNT,
-    accounts: [freshAccount("Default")],
+    accounts: [freshAccount("Default", route)],
   };
 }
 
@@ -104,10 +115,16 @@ function createServices(options = {}) {
     return `persist:${service.id}:${account}`;
   }
 
+  function activeRoute(service) {
+    const active = service.accounts.find((item) => item.id === service.activeAccountId) || service.accounts[0];
+    return accountRoute(service.id, active, service.route);
+  }
+
   function publicAccount(service, account) {
     return {
       id: account.id,
       label: account.label,
+      route: accountRoute(service.id, account, service.route),
       partition: partitionFor(service.id, account.id),
     };
   }
@@ -118,7 +135,7 @@ function createServices(options = {}) {
       name: service.name,
       url: service.url,
       builtin: service.builtin === true,
-      route: service.route === "direct" ? "direct" : "tunnel",
+      route: activeRoute(service),
       hidden: service.hidden === true,
       order: service.order,
       zoom: service.zoom,
@@ -156,12 +173,16 @@ function createServices(options = {}) {
         name: service.name,
         url: service.url,
         builtin: service.builtin === true,
-        route: service.route,
+        route: activeRoute(service),
         hidden: service.hidden === true,
         order: service.order,
         zoom: service.zoom,
         activeAccountId: service.activeAccountId,
-        accounts: service.accounts.map((account) => ({ id: account.id, label: account.label })),
+        accounts: service.accounts.map((account) => ({
+          id: account.id,
+          label: account.label,
+          route: accountRoute(service.id, account, service.route),
+        })),
       })),
     }, null, 2);
     const tmp = `${dest}.tmp`;
@@ -169,10 +190,14 @@ function createServices(options = {}) {
     fs.renameSync(tmp, dest);
   }
 
-  function normalizeAccount(entry, seen) {
+  function normalizeAccount(entry, seen, serviceId, inherited) {
     if (!entry || !isAccountId(entry.id) || seen.has(entry.id)) return null;
     seen.add(entry.id);
-    return { id: entry.id, label: sanitizeLabel(entry.label, entry.id === DEFAULT_ACCOUNT ? "Default" : "Account") };
+    return {
+      id: entry.id,
+      label: sanitizeLabel(entry.label, entry.id === DEFAULT_ACCOUNT ? "Default" : "Account"),
+      route: accountRoute(serviceId, entry, inherited),
+    };
   }
 
   function normalizeStored(entry, order) {
@@ -182,11 +207,13 @@ function createServices(options = {}) {
     if (!builtin && !customUrl) return null;
     if (!builtin && !/^[0-9a-f-]{36}$/i.test(entry.id)) return null;
     const seen = new Set();
+    const serviceId = builtin ? builtin.id : entry.id;
+    const inherited = serviceId === OPENCLAW_ID ? "direct" : (entry.route === "direct" ? "direct" : "tunnel");
     let accounts = Array.isArray(entry.accounts)
-      ? entry.accounts.map((item) => normalizeAccount(item, seen)).filter(Boolean)
+      ? entry.accounts.map((item) => normalizeAccount(item, seen, serviceId, inherited)).filter(Boolean)
       : [];
     if (!accounts.some((item) => item.id === DEFAULT_ACCOUNT)) {
-      accounts = [freshAccount("Default"), ...accounts];
+      accounts = [freshAccount("Default", inherited), ...accounts];
     }
     const active = accounts.some((item) => item.id === entry.activeAccountId)
       ? entry.activeAccountId
@@ -254,7 +281,7 @@ function createServices(options = {}) {
           serviceId: service.id,
           accountId: account.id,
           label: account.label,
-          route: service.route === "direct" ? "direct" : "tunnel",
+          route: accountRoute(service.id, account, service.route),
           partition: partitionFor(service.id, account.id),
           hidden: service.hidden === true,
           url: service.url,
@@ -299,10 +326,12 @@ function createServices(options = {}) {
       const service = findService(id);
       return Boolean(service && service.hidden);
     },
-    route(id) {
+    route(id, accountId) {
       load();
       const service = findService(id);
-      return service && service.route === "direct" ? "direct" : "tunnel";
+      if (!service) return "tunnel";
+      const account = service.accounts.find((item) => item.id === (accountId || service.activeAccountId));
+      return accountRoute(service.id, account, service.route);
     },
     zoom(id) {
       load();
@@ -328,15 +357,17 @@ function createServices(options = {}) {
       load();
       return [...spellcheckLanguages];
     },
-    setRoute(id, route) {
+    setRoute(id, route, accountId) {
       return enqueue(async () => {
         load();
         const service = findService(id);
         if (!service) throw new Error("Unknown service");
         if (service.id === OPENCLAW_ID) return snapshot();
+        const account = service.accounts.find((item) => item.id === (accountId || service.activeAccountId));
+        if (!account) throw new Error("Unknown account");
         const next = route === "direct" ? "direct" : "tunnel";
-        if (service.route === next) return snapshot();
-        service.route = next;
+        account.route = next;
+        service.route = activeRoute(service);
         save();
         return publish();
       });
@@ -381,6 +412,7 @@ function createServices(options = {}) {
         const account = {
           id: crypto.randomUUID(),
           label: sanitizeLabel(label, `Account ${service.accounts.length + 1}`),
+          route: activeRoute(service),
         };
         service.accounts.push(account);
         service.activeAccountId = account.id;
@@ -436,7 +468,7 @@ function createServices(options = {}) {
           order: services.length,
           zoom: 1,
           activeAccountId: DEFAULT_ACCOUNT,
-          accounts: [freshAccount("Default")],
+          accounts: [freshAccount("Default", "tunnel")],
         };
         services.push(service);
         save();

@@ -186,6 +186,7 @@
         cursor: pointer;
       }
       .svc-row { display: flex; gap: 6px; align-items: center; margin: 0 0 6px; font-size: 12px; color: #ccc; }
+      .svc-row span { flex: 1; min-width: 0; }
       .svc-row input[type="text"] { flex: 1; min-width: 0; }
       body[data-theme="light"] #find-bar,
       body[data-theme="light"] #compare-bar,
@@ -878,11 +879,11 @@
     <div id="google-overlay" hidden></div>
     <div id="google-panel" hidden aria-label="Google sign-in">
       <h2>Google</h2>
-      <p>Use one Google account on every tab. A site may ask you to press Continue once.</p>
+      <p>Share one Google account with the profiles you choose. Other profiles keep their own sign-in. A site may ask you to press Continue once.</p>
       <div id="google-email">No shared Google account yet</div>
       <div class="g-actions">
         <button type="button" id="google-signin" class="primary">Sign in with Google</button>
-        <button type="button" id="google-apply" disabled>Sign in all tabs</button>
+        <button type="button" id="google-apply" disabled>Sign in shared profiles</button>
       </div>
       <div id="google-services"></div>
     </div>
@@ -908,7 +909,7 @@
       </div>
 
       <div class="p-wg on" id="p-services-wrap">
-        <p class="p-wg-note">Each service can use the tunnel or a direct connection. Uncheck a service to hide its tab.</p>
+        <p class="p-wg-note">Each account can use the tunnel or a direct connection. Uncheck a service to hide its tab.</p>
         <div id="p-services"></div>
         <p class="p-wg-note">Add a site</p>
         <input id="custom-name" type="text" placeholder="Name" aria-label="Service name">
@@ -1786,7 +1787,7 @@
           start.hidden = false;
         } else if (!status.installed) {
           title.textContent = 'Install OpenClaw';
-          explain.textContent = 'This tab opens a page that runs on this Mac. Install it once, then it opens here.';
+          explain.textContent = 'Install downloads https://openclaw.ai/install.sh and asks before running it.';
           install.hidden = false;
           start.hidden = true;
         } else {
@@ -1903,6 +1904,8 @@
 
       async function installOpenClaw() {
         if (openclawBusy || !window.electronAPI.openclawInstall) return;
+        const proceed = window.confirm("AI Hub will download https://openclaw.ai/install.sh and run it with /bin/bash.");
+        if (!proceed) return;
         const seq = ++openclawSeq;
         setOpenClawBusy(true);
         const button = document.getElementById('oc-install');
@@ -2034,55 +2037,85 @@
         });
       }
 
+      async function setAccountRoute(serviceId, accountId, route) {
+        const result = await window.electronAPI.servicesSetRoute({ id: serviceId, accountId: accountId, route: route });
+        if (result && result.needsConfirm) {
+          const proceed = window.confirm("This account will see a country change.");
+          if (!proceed) {
+            renderServiceSettings();
+            return;
+          }
+          await window.electronAPI.servicesSetRoute({
+            id: serviceId,
+            accountId: accountId,
+            route: route,
+            confirm: true,
+          });
+        }
+      }
+
       function renderServiceSettings() {
         const root = document.getElementById("p-services");
         if (!root) return;
         root.textContent = "";
         (serviceState.services || []).forEach((service, index, list) => {
-          const row = document.createElement("div");
-          row.className = "svc-row";
-          const shown = document.createElement("input");
-          shown.type = "checkbox";
-          shown.checked = !service.hidden;
-          shown.title = "Show tab";
-          shown.addEventListener("change", () => {
-            void window.electronAPI.servicesSetHidden({ id: service.id, hidden: !shown.checked });
+          const accounts = service.id === "OpenClaw" ? [null] : (service.accounts || []);
+          accounts.forEach((account, accountIndex) => {
+            const row = document.createElement("div");
+            row.className = "svc-row";
+            if (accountIndex === 0) {
+              const shown = document.createElement("input");
+              shown.type = "checkbox";
+              shown.checked = !service.hidden;
+              shown.title = "Show tab";
+              shown.addEventListener("change", () => {
+                void window.electronAPI.servicesSetHidden({ id: service.id, hidden: !shown.checked });
+              });
+              row.appendChild(shown);
+            }
+            const name = document.createElement("span");
+            const several = service.accounts && service.accounts.length > 1 && account;
+            name.textContent = several ? (service.name + " · " + (account.label || "Account")) : service.name;
+            row.appendChild(name);
+            if (account) {
+              const route = document.createElement("select");
+              route.setAttribute("aria-label", name.textContent + " route");
+              ["tunnel", "direct"].forEach((value) => {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = value === "tunnel" ? "Tunnel" : "Direct";
+                option.selected = account.route === value;
+                route.appendChild(option);
+              });
+              route.addEventListener("change", () => {
+                void setAccountRoute(service.id, account.id, route.value);
+              });
+              row.appendChild(route);
+            }
+            if (accountIndex === 0) {
+              const up = document.createElement("button");
+              up.type = "button";
+              up.textContent = "Up";
+              up.disabled = index === 0;
+              up.addEventListener("click", () => moveService(index, -1));
+              const down = document.createElement("button");
+              down.type = "button";
+              down.textContent = "Down";
+              down.disabled = index === list.length - 1;
+              down.addEventListener("click", () => moveService(index, 1));
+              row.append(up, down);
+              if (!service.builtin) {
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.textContent = "Remove";
+                remove.addEventListener("click", () => {
+                  void window.electronAPI.servicesRemoveCustom(service.id);
+                });
+                row.appendChild(remove);
+              }
+            }
+            root.appendChild(row);
           });
-          const name = document.createElement("span");
-          name.textContent = service.name;
-          const route = document.createElement("select");
-          route.setAttribute("aria-label", service.name + " route");
-          ["tunnel", "direct"].forEach((value) => {
-            const option = document.createElement("option");
-            option.value = value;
-            option.textContent = value === "tunnel" ? "Tunnel" : "Direct";
-            option.selected = service.route === value;
-            route.appendChild(option);
-          });
-          route.addEventListener("change", () => {
-            void window.electronAPI.servicesSetRoute({ id: service.id, route: route.value });
-          });
-          const up = document.createElement("button");
-          up.type = "button";
-          up.textContent = "Up";
-          up.disabled = index === 0;
-          up.addEventListener("click", () => moveService(index, -1));
-          const down = document.createElement("button");
-          down.type = "button";
-          down.textContent = "Down";
-          down.disabled = index === list.length - 1;
-          down.addEventListener("click", () => moveService(index, 1));
-          row.append(shown, name, route, up, down);
-          if (!service.builtin) {
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.textContent = "Remove";
-            remove.addEventListener("click", () => {
-              void window.electronAPI.servicesRemoveCustom(service.id);
-            });
-            row.appendChild(remove);
-          }
-          root.appendChild(row);
         });
         const hotkey = document.getElementById("hotkey-input");
         if (hotkey && document.activeElement !== hotkey) hotkey.value = serviceState.hotkey || "";
@@ -2237,6 +2270,8 @@
         const text = document.getElementById("oc-update-text");
         const action = document.getElementById("oc-update-action");
         if (!bar || !text || !action || !window.electronAPI.openclawUpdate) return;
+        const proceed = window.confirm("AI Hub will run: openclaw update --yes --json --timeout 600");
+        if (!proceed) return;
         action.disabled = true;
         text.textContent = "Updating OpenClaw…";
         try {

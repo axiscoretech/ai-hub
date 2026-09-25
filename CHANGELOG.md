@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Each account has its own tunnel or direct route. Changing the route of an account that already has a site session warns that it will see a country change.
+- A shared Google sign-in applies only to the profiles you choose. Extra accounts start with their own sign-in.
+- Compare insert focuses the chat's message box, then types the task text without sending it.
+- OpenClaw install and update ask first. The installer is only `https://openclaw.ai/install.sh`.
+- Tunnel tabs block WebRTC UDP that would skip the SOCKS proxy, including while the kill switch is on.
+- A downloaded app update is offered only after its SHA-256 matches the release checksum.
+
 ## 1.4.0
 
 - OpenClaw opens in its tab, signs in by itself, and installs or updates from a button instead of terminal commands.

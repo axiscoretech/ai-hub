@@ -8,6 +8,7 @@ if (process.env.AI_HUB_USER_DATA) {
 
 app.setName("AI Hub");
 const fs = require("fs");
+const crypto = require("crypto");
 const https = require("https");
 const http = require("http");
 const os = require("os");
@@ -23,9 +24,9 @@ const {
   hasGoogleSession,
   findEmail,
   loginUrlFor,
-  targetsForApply,
   CLICK_GOOGLE_SCRIPT,
 } = require("./google");
+const { checksumFor } = require("./checksums");
 const {
   inspectOpenClaw,
   startOpenClawGateway,
@@ -407,7 +408,32 @@ async function startCompare(taskId) {
   return { success: true };
 }
 
-function insertCompareText() {
+const FOCUS_COMPOSER_SCRIPT = `(() => {
+  const nodes = [...document.querySelectorAll("textarea, [contenteditable]")];
+  const visible = nodes.filter((el) => {
+    if (el.getAttribute("contenteditable") === "false") return false;
+    const style = getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 40 && rect.height > 16 && rect.bottom > 0 && rect.top < window.innerHeight;
+  });
+  if (!visible.length) return false;
+  visible.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+  visible[0].focus();
+  return true;
+})()`;
+
+async function insertIntoComposer(contents, text) {
+  if (!contents || contents.isDestroyed() || !text) return false;
+  try { contents.focus(); } catch { return false; }
+  let focused = false;
+  try { focused = await contents.executeJavaScript(FOCUS_COMPOSER_SCRIPT, true); } catch { focused = false; }
+  if (!focused) return false;
+  try { contents.insertText(text); } catch { return false; }
+  return true;
+}
+
+async function insertCompareText() {
   const status = tasks.list();
   const task = (status.tasks || []).find((item) => item.id === compareTaskId);
   if (!task) return { success: false, error: "Unknown task" };
@@ -416,12 +442,8 @@ function insertCompareText() {
     ? compareFocus
     : (compareSlots[0] && isViewUsable(compareSlots[0].view) ? compareSlots[0].view.webContents : null);
   if (!contents || contents.isDestroyed()) return { success: false, error: "Click a chat first" };
-  try {
-    contents.focus();
-    contents.insertText(text);
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  const inserted = await insertIntoComposer(contents, text);
+  if (!inserted) return { success: false, error: "Click the message box first" };
   return { success: true };
 }
 
@@ -441,15 +463,72 @@ function registerHotkey() {
     switchTab(name);
     const view = views[name];
     if (!text || !isViewUsable(view)) return;
-    try {
-      view.webContents.focus();
-      view.webContents.insertText(text);
-    } catch {}
+    void insertIntoComposer(view.webContents, text);
   });
   if (ok) registeredHotkey = accel;
 }
 
 let autoUpdater = null;
+let updateReady = false;
+
+function releaseChecksumUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && (
+      parsed.hostname === "github.com" || parsed.hostname.endsWith(".githubusercontent.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fetchReleaseText(url, redirectsLeft = 3) {
+  return new Promise((resolve, reject) => {
+    if (!releaseChecksumUrl(url)) {
+      reject(new Error("source"));
+      return;
+    }
+    const request = https.get(url, { headers: { "User-Agent": "AI-Hub", Accept: "application/octet-stream" } }, (response) => {
+      const status = response.statusCode || 0;
+      if (status >= 300 && status < 400 && response.headers.location) {
+        response.resume();
+        if (redirectsLeft <= 0) {
+          reject(new Error("redirect"));
+          return;
+        }
+        fetchReleaseText(new URL(response.headers.location, url).href, redirectsLeft - 1).then(resolve, reject);
+        return;
+      }
+      if (status !== 200) {
+        response.resume();
+        reject(new Error("status"));
+        return;
+      }
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    });
+    request.on("error", reject);
+  });
+}
+
+function sha256File(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+async function verifyDownloadedUpdate(filePath, version) {
+  if (!filePath || !/^\d+\.\d+\.\d+$/.test(String(version || ""))) return false;
+  const sums = await fetchReleaseText(`https://github.com/axiscoretech/ai-hub/releases/download/v${version}/SHA256SUMS`);
+  const expected = checksumFor(sums, filePath);
+  if (!expected) return false;
+  return await sha256File(filePath) === expected;
+}
 
 function setupUpdates() {
   if (!app.isPackaged) return;
@@ -463,8 +542,15 @@ function setupUpdates() {
   autoUpdater.on("update-available", (info) => {
     if (win && !win.isDestroyed()) win.webContents.send("update-available", { version: info && info.version });
   });
-  autoUpdater.on("update-downloaded", () => {
-    if (win && !win.isDestroyed()) win.webContents.send("update-downloaded");
+  autoUpdater.on("update-downloaded", (info) => {
+    updateReady = false;
+    const file = info && info.downloadedFile;
+    const version = info && info.version;
+    void verifyDownloadedUpdate(file, version).then((ok) => {
+      if (!ok) return;
+      updateReady = true;
+      if (win && !win.isDestroyed()) win.webContents.send("update-downloaded");
+    }).catch(() => {});
   });
   autoUpdater.on("error", () => {});
   autoUpdater.checkForUpdates().catch(() => {});
@@ -1975,27 +2061,77 @@ function googleAccountsFile() {
   return path.join(app.getPath("userData"), "google-accounts.json");
 }
 
-function readGoogleBook() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(googleAccountsFile(), "utf8"));
-    const overrides = raw && raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {};
-    const clean = {};
-    for (const [name, value] of Object.entries(overrides)) {
-      if (tabs[name] && name !== OPENCLAW_TAB && value) clean[name] = true;
-    }
-    return {
-      email: typeof raw.email === "string" ? raw.email.slice(0, 120) : "",
-      overrides: clean,
-    };
-  } catch {
-    return { email: "", overrides: {} };
+function defaultSharedMap() {
+  const shared = {};
+  for (const account of services.accounts()) {
+    if (account.serviceId === OPENCLAW_TAB || account.accountId !== "default") continue;
+    if (!shared[account.serviceId]) shared[account.serviceId] = [];
+    shared[account.serviceId].push(account.accountId);
   }
+  return shared;
+}
+
+function cleanSharedMap(value) {
+  const shared = {};
+  if (!value || typeof value !== "object") return shared;
+  for (const [serviceId, list] of Object.entries(value)) {
+    if (typeof serviceId !== "string" || serviceId === OPENCLAW_TAB || !Array.isArray(list)) continue;
+    const ids = list.filter((id) => typeof id === "string" && id.length > 0 && id.length < 80);
+    if (ids.length) shared[serviceId] = [...new Set(ids)];
+  }
+  return shared;
+}
+
+function readGoogleBook() {
+  let raw = null;
+  try { raw = JSON.parse(fs.readFileSync(googleAccountsFile(), "utf8")); } catch { raw = null; }
+  const email = raw && typeof raw.email === "string" ? raw.email.slice(0, 120) : "";
+  if (!raw) return { email: "", shared: defaultSharedMap(), isolated: false, exists: false };
+  if (raw.shared && typeof raw.shared === "object") {
+    return { email, shared: cleanSharedMap(raw.shared), isolated: raw.isolated === true, exists: true };
+  }
+  const overrides = raw.overrides && typeof raw.overrides === "object" ? raw.overrides : {};
+  const shared = {};
+  for (const account of services.accounts()) {
+    if (account.serviceId === OPENCLAW_TAB || account.accountId !== "default") continue;
+    if (overrides[account.serviceId]) continue;
+    if (!shared[account.serviceId]) shared[account.serviceId] = [];
+    shared[account.serviceId].push(account.accountId);
+  }
+  return { email, shared, isolated: false, exists: true };
 }
 
 function writeGoogleBook(book) {
   const dest = googleAccountsFile();
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, JSON.stringify(book, null, 2));
+  const body = {
+    email: typeof book.email === "string" ? book.email.slice(0, 120) : "",
+    shared: cleanSharedMap(book.shared),
+    isolated: book.isolated === true,
+  };
+  fs.writeFileSync(dest, JSON.stringify(body, null, 2), { mode: 0o600 });
+}
+
+function profileIsShared(book, serviceId, accountId) {
+  const members = book.shared && book.shared[serviceId];
+  return Array.isArray(members) && members.includes(accountId);
+}
+
+function googleProfiles(book) {
+  const profiles = [];
+  for (const service of services.list().services) {
+    if (service.id === OPENCLAW_TAB) continue;
+    for (const account of service.accounts) {
+      profiles.push({
+        serviceId: service.id,
+        accountId: account.id,
+        serviceName: service.name,
+        label: account.label,
+        shared: profileIsShared(book, service.id, account.id),
+      });
+    }
+  }
+  return profiles;
 }
 
 function googleSession() {
@@ -2009,8 +2145,7 @@ async function googleSnapshot() {
   return {
     signedIn: hasGoogleSession(cookies),
     email: book.email || "",
-    services: Object.keys(tabs),
-    overrides: book.overrides,
+    profiles: googleProfiles(book),
   };
 }
 
@@ -2147,14 +2282,37 @@ async function applySharedGoogle() {
     return publishGoogle();
   }
   const book = readGoogleBook();
-  const names = targetsForApply(Object.keys(tabs), book.overrides);
-  for (const name of names) {
-    const target = session.fromPartition(partitionForTab(name));
+  for (const profile of googleProfiles(book)) {
+    if (!profile.shared) continue;
+    const partition = services.partitionFor(profile.serviceId, profile.accountId);
+    if (!partition) continue;
+    const target = session.fromPartition(partition);
     await clearGoogleCookies(target);
     await copyGoogleCookies(source, target);
-    openServiceForGoogle(name);
+    if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId);
   }
   return publishGoogle();
+}
+
+async function isolateUnsharedProfiles() {
+  const book = readGoogleBook();
+  if (book.isolated) return;
+  if (book.exists) {
+    for (const account of services.accounts()) {
+      if (account.serviceId === OPENCLAW_TAB) continue;
+      if (profileIsShared(book, account.serviceId, account.accountId)) continue;
+      await clearGoogleCookies(session.fromPartition(account.partition));
+    }
+  }
+  writeGoogleBook({ email: book.email, shared: book.shared, isolated: true });
+}
+
+function googleMembershipTarget(payload) {
+  const serviceId = typeof payload === "string" ? payload : payload && (payload.serviceId || payload.id);
+  const accountId = typeof payload === "string" ? "default" : (payload && payload.accountId) || "default";
+  if (!serviceId || serviceId === OPENCLAW_TAB || !services.known(serviceId)) return null;
+  if (!services.partitionFor(serviceId, accountId)) return null;
+  return { serviceId, accountId };
 }
 
 // ── IPC ─────────────────────────────────────────────────────────────────────
@@ -2165,16 +2323,43 @@ ipcMain.on("switch-tab", (_event, tabName) => {
 
 handle("services-list", () => services.list());
 
+function siteHosts(pageUrl) {
+  let host = "";
+  try { host = new URL(pageUrl).hostname.toLowerCase(); } catch { return []; }
+  const extra = host === "chat.openai.com" || host === "chatgpt.com" ? ["chatgpt.com", "chat.openai.com", "openai.com"] : [];
+  return [...new Set([host, ...extra])];
+}
+
+async function profileSawSite(serviceId, accountId) {
+  const hosts = siteHosts(services.url(serviceId));
+  const partition = services.partitionFor(serviceId, accountId);
+  if (!hosts.length || !partition) return false;
+  let cookies = [];
+  try { cookies = await session.fromPartition(partition).cookies.get({}); } catch { return false; }
+  return cookies.some((cookie) => {
+    if (!cookie || !cookie.value) return false;
+    const domain = String(cookie.domain || "").replace(/^\./, "").toLowerCase();
+    if (!domain.includes(".")) return false;
+    return hosts.some((host) => host === domain || host.endsWith(`.${domain}`) || domain.endsWith(`.${host}`));
+  });
+}
+
 handle("services-set-route", async (_event, payload) => {
   try {
-    const status = await services.setRoute(payload && payload.id, payload && payload.route);
     const id = payload && payload.id;
-    const accounts = services.accounts().filter((account) => account.serviceId === id);
-    const targets = await Promise.all(accounts.map((account) => configureAccountProxy(account)));
-    await Promise.all(accounts.map((account, index) => {
-      if (shouldKeepConnections(account.partition)) return undefined;
-      return targets[index].closeAllConnections().catch(() => {});
-    }));
+    const accountId = (payload && payload.accountId) || services.activeAccountId(id);
+    const next = payload && payload.route === "direct" ? "direct" : "tunnel";
+    if (services.route(id, accountId) !== next && !(payload && payload.confirm)) {
+      if (await profileSawSite(id, accountId)) {
+        return { success: false, needsConfirm: true, status: services.list() };
+      }
+    }
+    const status = await services.setRoute(id, next, accountId);
+    const account = services.accounts().find((item) => item.serviceId === id && item.accountId === accountId);
+    if (account) {
+      const target = await configureAccountProxy(account);
+      if (!shouldKeepConnections(account.partition)) await target.closeAllConnections().catch(() => {});
+    }
     return { success: true, status };
   }
   catch (err) { return { success: false, error: err.message, status: services.list() }; }
@@ -2292,6 +2477,7 @@ handle("update-download", async () => {
 
 handle("update-install", () => {
   if (!autoUpdater) return { success: false, error: "Updates are available in the installed app" };
+  if (!updateReady) return { success: false, error: "The download did not match the published checksum." };
   autoUpdater.quitAndInstall();
   return { success: true };
 });
@@ -2609,30 +2795,37 @@ handle("google-sign-in", async () => {
 
 handle("google-apply-all", () => applySharedGoogle());
 
-handle("google-use-shared", async (_event, service) => {
-  if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
+handle("google-use-shared", async (_event, payload) => {
+  const target = googleMembershipTarget(payload);
+  if (!target) return googleSnapshot();
   const book = readGoogleBook();
-  delete book.overrides[service];
+  const members = new Set(book.shared[target.serviceId] || []);
+  members.add(target.accountId);
+  book.shared[target.serviceId] = [...members];
+  book.isolated = true;
   writeGoogleBook(book);
   const source = googleSession();
   const cookies = await source.cookies.get({});
   if (hasGoogleSession(cookies)) {
-    const target = session.fromPartition(partitionForTab(service));
-    await clearGoogleCookies(target);
-    await copyGoogleCookies(source, target);
-    openServiceForGoogle(service);
+    const partition = services.partitionFor(target.serviceId, target.accountId);
+    const sessionTarget = session.fromPartition(partition);
+    await clearGoogleCookies(sessionTarget);
+    await copyGoogleCookies(source, sessionTarget);
+    if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId);
   }
   return publishGoogle();
 });
 
-handle("google-use-other", async (_event, service) => {
-  if (!tabs[service] || service === OPENCLAW_TAB) return googleSnapshot();
+handle("google-use-other", async (_event, payload) => {
+  const target = googleMembershipTarget(payload);
+  if (!target) return googleSnapshot();
   const book = readGoogleBook();
-  book.overrides[service] = true;
+  book.shared[target.serviceId] = (book.shared[target.serviceId] || []).filter((id) => id !== target.accountId);
+  book.isolated = true;
   writeGoogleBook(book);
-  const target = session.fromPartition(partitionForTab(service));
-  await clearGoogleCookies(target);
-  openGoogleChooser(partitionForTab(service));
+  const partition = services.partitionFor(target.serviceId, target.accountId);
+  await clearGoogleCookies(session.fromPartition(partition));
+  openGoogleChooser(partition);
   return publishGoogle();
 });
 
@@ -2654,6 +2847,7 @@ app.whenReady().then(async () => {
   createWindow();
   registerHotkey();
   setupUpdates();
+  void isolateUnsharedProfiles();
 
   const iconPath = path.join(__dirname, "../../assets/icon.png");
   if (process.platform === "darwin" && fs.existsSync(iconPath) && app.dock) {

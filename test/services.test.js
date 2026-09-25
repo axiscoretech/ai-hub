@@ -52,6 +52,30 @@ test("extra accounts get their own partition", async () => {
   }
 });
 
+test("each account keeps its own route", async () => {
+  const ctx = makeApi();
+  try {
+    const added = await ctx.api.addAccount("Claude", "Work");
+    const work = added.services.find((item) => item.id === "Claude").accounts.find((item) => item.label === "Work");
+    const changed = await ctx.api.setRoute("Claude", "direct", work.id);
+    const claude = changed.services.find((item) => item.id === "Claude");
+    assert.equal(claude.accounts.find((item) => item.id === "default").route, "tunnel");
+    assert.equal(claude.accounts.find((item) => item.id === work.id).route, "direct");
+    assert.equal(ctx.api.route("Claude", "default"), "tunnel");
+    assert.equal(ctx.api.route("Claude", work.id), "direct");
+    assert.equal(claude.route, "direct");
+    const again = createServices({
+      getUserDataPath: () => ctx.dir,
+      openclawUrl: "http://127.0.0.1:18789/",
+    });
+    const saved = again.list().services.find((item) => item.id === "Claude");
+    assert.equal(saved.accounts.find((item) => item.id === work.id).route, "direct");
+    assert.equal(saved.accounts.find((item) => item.id === "default").route, "tunnel");
+  } finally {
+    ctx.cleanup();
+  }
+});
+
 test("route, order, custom urls, and visibility persist", async () => {
   const ctx = makeApi();
   try {

@@ -46,6 +46,21 @@ function targetsForApply(services, overrides) {
   return (services || []).filter((name) => name && name !== "OpenClaw" && !skipped[name]);
 }
 
+function sharedProfiles(profiles, book) {
+  const rows = Array.isArray(profiles) ? profiles : [];
+  const shared = book && book.shared && typeof book.shared === "object" ? book.shared : null;
+  const overrides = book && book.overrides && typeof book.overrides === "object" ? book.overrides : null;
+  return rows.filter((profile) => {
+    if (!profile || !profile.serviceId || profile.serviceId === "OpenClaw") return false;
+    if (shared) {
+      const members = shared[profile.serviceId];
+      return Array.isArray(members) && members.includes(profile.accountId);
+    }
+    if (overrides && overrides[profile.serviceId]) return false;
+    return !profile.accountId || profile.accountId === "default";
+  });
+}
+
 const CLICK_GOOGLE_SCRIPT = `(() => {
   const nodes = [...document.querySelectorAll("button, a, [role='button']")];
   const target = nodes.find((el) => {
@@ -65,5 +80,6 @@ module.exports = {
   findEmail,
   loginUrlFor,
   targetsForApply,
+  sharedProfiles,
   CLICK_GOOGLE_SCRIPT,
 };

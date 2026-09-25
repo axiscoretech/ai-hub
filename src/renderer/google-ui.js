@@ -1,5 +1,5 @@
 (function () {
-  let state = { signedIn: false, email: "", services: [], overrides: {} };
+  let state = { signedIn: false, email: "", profiles: [] };
 
   function panel() {
     return document.getElementById("google-panel");
@@ -23,25 +23,28 @@
     }
     const list = document.getElementById("google-services");
     list.replaceChildren();
-    (state.services || []).forEach((service) => {
-      if (service === "OpenClaw") return;
+    (state.profiles || []).forEach((profile) => {
       const row = document.createElement("div");
       row.className = "g-row";
       const name = document.createElement("span");
-      name.textContent = service;
+      const several = (state.profiles || []).filter((item) => item.serviceId === profile.serviceId).length > 1;
+      name.textContent = several
+        ? (profile.serviceName + " · " + (profile.label || "Account"))
+        : profile.serviceName;
       const select = document.createElement("select");
-      select.setAttribute("aria-label", service + " Google account");
-      [["shared", "Shared"], ["other", "Other account"]].forEach(([value, label]) => {
+      select.setAttribute("aria-label", name.textContent + " Google account");
+      [["shared", "Shared"], ["own", "Own account"]].forEach(([value, label]) => {
         const option = document.createElement("option");
         option.value = value;
         option.textContent = label;
-        if ((value === "other") === Boolean(state.overrides && state.overrides[service])) option.selected = true;
+        option.selected = profile.shared ? value === "shared" : value === "own";
         select.appendChild(option);
       });
       select.addEventListener("change", () => {
-        const call = select.value === "other"
-          ? window.electronAPI.googleUseOther(service)
-          : window.electronAPI.googleUseShared(service);
+        const payload = { serviceId: profile.serviceId, accountId: profile.accountId };
+        const call = select.value === "own"
+          ? window.electronAPI.googleUseOther(payload)
+          : window.electronAPI.googleUseShared(payload);
         call.then(applyStatus).catch(showError);
       });
       row.append(name, select);
@@ -106,11 +109,11 @@
       apply.textContent = "Signing in…";
       window.electronAPI.googleApplyAll().then((next) => {
         applyStatus(next);
-        apply.textContent = "Sign in all tabs";
+        apply.textContent = "Sign in shared profiles";
       }).catch((err) => {
         showError(err);
         apply.disabled = !state.signedIn;
-        apply.textContent = "Sign in all tabs";
+        apply.textContent = "Sign in shared profiles";
       });
     });
     window.electronAPI.onGoogle(applyStatus);

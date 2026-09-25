@@ -61,6 +61,6 @@ xcrun stapler validate "/Applications/AI Hub.app"
 
 ## Notes
 
-- If the Apple secrets are missing, the workflow still builds an unsigned release.
+- If the Apple secrets are missing, the workflow still builds an unsigned release. macOS Gatekeeper then asks again on each update. The app offers that update only after the downloaded file's SHA-256 matches `SHA256SUMS` on the GitHub release. Signing and notarization are what make the update install without that prompt.
 - The notarization hook is implemented in `scripts/notarize.js`.
 - Electron entitlements are defined in `assets/entitlements.mac.plist` and `assets/entitlements.mac.inherit.plist`.

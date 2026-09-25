@@ -9,6 +9,15 @@ const { spawn } = require("child_process");
 const DEFAULT_PORT = 18789;
 const DEFAULT_OPENCLAW_URL = "http://127.0.0.1:18789/";
 const INSTALL_URL = "https://openclaw.ai/install.sh";
+
+function isOfficialInstallerUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.hostname === "openclaw.ai";
+  } catch {
+    return false;
+  }
+}
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 const controlPorts = new Set([DEFAULT_PORT]);
@@ -356,6 +365,10 @@ function updateOpenClaw() {
 
 function downloadInstaller(url, dest, redirectsLeft) {
   return new Promise((resolve, reject) => {
+    if (!isOfficialInstallerUrl(url)) {
+      reject(new Error("source"));
+      return;
+    }
     const request = https.get(url, { headers: { "User-Agent": "AI-Hub" } }, (response) => {
       const status = response.statusCode || 0;
       if (status >= 300 && status < 400 && response.headers.location) {
@@ -578,6 +591,7 @@ module.exports = {
   openClawUpdateStatus,
   updateOpenClaw,
   installOpenClaw,
+  isOfficialInstallerUrl,
   isOpenClawControlUrl,
   notePort,
   rememberControlUrl,

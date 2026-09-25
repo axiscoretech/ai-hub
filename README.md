@@ -22,20 +22,20 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
-A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites. It does not type into them.
+A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Each account has its own login and its own choice of tunnel or direct connection. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites. It does not type into them.
 
 ---
 
 ## Features
 
 - **Separate from your browser** — AI chats get their own dock icon and window
-- **Isolated sessions** — stay logged in to every service at once. A service can hold more than one account, each with its own login
+- **Isolated sessions** — stay logged in to every service at once. A service can hold more than one account, each with its own login and its own tunnel or direct route
 - **Live tabs** — switching services does not reload the page
 - **Compare** — put two or three chats side by side, insert the task text into the focused chat without sending it, and keep the task board
 - **WireGuard** — send the hub tabs you choose through a WireGuard config. Other services can stay on a direct connection. This does not change the rest of your Mac, PC, or Linux machine
 - **Your own sites** — add an https address when a service is missing from the list. Hide a tab from the flag panel when you do not want it
 - **Theme** — dark, light, or match the system
-- **OpenClaw** — a tab for a local OpenClaw gateway, if you have one installed
+- **OpenClaw** — a tab for a local OpenClaw gateway. Installing or updating it asks first and uses the official source
 
 The app opens the real websites. It does not sell credits, and it does not type into those sites for you.
 
@@ -43,14 +43,15 @@ The app opens the real websites. It does not sell credits, and it does not type 
 
 ## Privacy
 
-AI Hub does not send telemetry. It talks to the sites you open, to GitHub when it downloads `wireproxy`, and to GitHub Releases when it checks for an app update.
+AI Hub does not send telemetry. It talks to the sites you open, to GitHub when it downloads `wireproxy`, and to GitHub Releases when it checks for an app update. A downloaded update is offered for install only after its SHA-256 matches the `SHA256SUMS` file published with that release. macOS still asks Gatekeeper to approve an update until the app is notarized.
 
 What stays on this computer, under the app's user data folder (`~/Library/Application Support/AI Hub` on macOS, `%APPDATA%\AI Hub` on Windows, `~/.config/AI Hub` on Linux):
 
-- **Logins.** Each service tab has its own session partition (`Partitions/persist:<service>`). Cookies stay in that partition.
+- **Logins.** Each account has its own session partition. The first account of a service is `Partitions/persist:<service>`. Another account is `Partitions/persist:<service>:<account>`. Cookies stay in that partition.
 - **WireGuard configs.** Imported `.conf` files are encrypted with the operating system key store (Keychain on macOS, DPAPI on Windows, the desktop keyring on Linux) and stored in `wireguard/`. If encryption is not available, AI Hub refuses to save the config. A plaintext copy exists only while that tunnel is running, then it is deleted.
 - **Compare tasks.** `tasks.json`.
-- **Shared Google account book.** `google-accounts.json`.
+- **Shared Google account book.** `google-accounts.json` records which profiles share one Google sign-in. Profiles left on their own are not in that group.
+- **OpenClaw sign-in.** The dashboard token is not written here. The app runs `openclaw dashboard --no-open`, reads the local URL from the pasteboard (the token is the URL fragment), keeps it in memory for that window, and restores the previous pasteboard text.
 - **Extensions.** `extensions/`.
 
 ---
@@ -88,6 +89,8 @@ An amber dot means the background tab's title changed while that assignment was 
 
 You can keep up to 50 tasks. Delete a task from its card. Removing the last service on a task is refused, so a task always points at somewhere.
 
+**Insert**, while the chats are side by side, focuses the message box of the chat you clicked and types the task text there. That includes the ProseMirror editors used by Claude and ChatGPT. It does not press Send.
+
 ---
 
 ## WireGuard
@@ -96,18 +99,34 @@ You can keep up to 50 tasks. Delete a task from its card. Removing the last serv
 
 1. Click the flag.
 2. Choose **Import .conf** and pick one or more WireGuard config files.
-3. Choose **Connect** on the config you want. **Switch location** moves the hub tabs to another imported config.
-4. **Disconnect** returns those tabs to a direct connection.
+3. Choose **Connect** on the config you want. **Switch location** moves the tunnel accounts to another imported config.
+4. **Disconnect** returns those accounts to a direct connection.
 
-Only AI Hub's service tabs use the tunnel. The rest of the system network stays as it is. The first time you connect, the app can download `wireproxy` if it is not already installed (`brew install wireproxy` installs it yourself). When the exit location is known, the flag icon shows that country.
+Only accounts set to Tunnel use it. The route is per account, so a work profile and a personal profile of the same service can exit in different countries. The rest of the system network stays as it is. Changing the route of an account that already has a site session warns that the account will see a country change.
+
+Tunnel accounts also block WebRTC UDP that would otherwise skip the proxy and reveal the real address. That block stays on if the tunnel drops and the account is cut off from the network. Accounts set to Direct keep normal WebRTC.
+
+The first time you connect, the app can download `wireproxy` if it is not already installed (`brew install wireproxy` installs it yourself). When the exit location is known, the flag icon shows that country.
+
+In the flag panel, each account has its own **Tunnel** or **Direct** choice. OpenClaw stays on this computer and has no tunnel choice.
+
+---
+
+## Google
+
+The **G** button shares one Google sign-in only with the profiles you mark **Shared**. A profile marked **Own account** keeps a separate Google login. A new extra account starts as its own. **Sign in shared profiles** copies the shared Google session into the profiles in that group and leaves the others alone.
 
 ---
 
 ## OpenClaw
 
-OpenClaw is the local personal assistant previously called Clawd, Clawdbot, and Moltbot. AI Hub does not install it for you.
+OpenClaw is the local personal assistant previously called Clawd, Clawdbot, and Moltbot.
 
-If the gateway is already running, the OpenClaw tab opens its dashboard. If it is missing or stopped, the tab explains the official install command and can start a gateway that is already installed. Pairing stays on that machine.
+If OpenClaw is missing, **Install OpenClaw** asks before it downloads [https://openclaw.ai/install.sh](https://openclaw.ai/install.sh) and runs that script with `/bin/bash`. Nothing else is downloaded as the installer, and a redirect off `openclaw.ai` is refused. **Update** asks before it runs `openclaw update --yes --json --timeout 600` with the OpenClaw already on this computer.
+
+Signing in does not use a password typed into AI Hub. The app runs `openclaw dashboard --no-open`. OpenClaw copies a local dashboard URL to the pasteboard, and the sign-in token is that URL's fragment. AI Hub reads it, opens the page, restores the previous pasteboard text, and keeps the token in memory for the window. It is not written to the app's files.
+
+If the gateway is already running, the OpenClaw tab opens its dashboard. Pairing stays on that machine.
 
 ---
 
