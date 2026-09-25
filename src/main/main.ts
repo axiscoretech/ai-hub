@@ -1,5 +1,5 @@
 import { handle } from "./ipc-bind";
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, session, webContents, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
 const path = require("path");
 
 if (process.env.AI_HUB_USER_DATA) {
@@ -12,7 +12,7 @@ const https = require("https");
 const http = require("http");
 const os = require("os");
 const yauzl = require("yauzl");
-const { createWireguard, buildBlackholeProxyConfig } = require("./wireguard");
+const { createWireguard, buildBlackholeProxyConfig, webrtcIpHandlingPolicy } = require("./wireguard");
 const { createTasks } = require("./tasks");
 const { createServices } = require("./services");
 const { streamEnded } = require("./stream-end");
@@ -114,16 +114,38 @@ function proxyForRoute(route) {
   return { mode: "direct" };
 }
 
+function applyWebRTCPolicyToContents(contents, route) {
+  if (!contents || contents.isDestroyed()) return;
+  if (typeof contents.setWebRTCIPHandlingPolicy !== "function") return;
+  contents.setWebRTCIPHandlingPolicy(webrtcIpHandlingPolicy(route, hubProxyPhase));
+}
+
+function applyWebRTCPolicy(targetSession, route) {
+  for (const contents of webContents.getAllWebContents()) {
+    try {
+      if (contents.isDestroyed() || contents.session !== targetSession) continue;
+      applyWebRTCPolicyToContents(contents, route);
+    } catch {}
+  }
+}
+
+async function configureAccountProxy(account) {
+  const target = session.fromPartition(account.partition);
+  applyWebRTCPolicy(target, account.route);
+  await target.setProxy(proxyForRoute(account.route));
+  return target;
+}
+
+function shouldKeepConnections(partition) {
+  return partition === "persist:OpenClaw" || partition.startsWith("persist:OpenClaw:");
+}
+
 async function applyRoutedProxy() {
   const accounts = services.accounts();
-  await Promise.all(accounts.map((account) => (
-    session.fromPartition(account.partition).setProxy(proxyForRoute(account.route))
-  )));
-  await Promise.all(accounts.map((account) => {
-    if (account.partition === "persist:OpenClaw" || account.partition.startsWith("persist:OpenClaw:")) {
-      return undefined;
-    }
-    return session.fromPartition(account.partition).closeAllConnections().catch(() => {});
+  const targets = await Promise.all(accounts.map((account) => configureAccountProxy(account)));
+  await Promise.all(accounts.map((account, index) => {
+    if (shouldKeepConnections(account.partition)) return undefined;
+    return targets[index].closeAllConnections().catch(() => {});
   }));
 }
 
@@ -1389,6 +1411,7 @@ function openPopupWindow(tabName, url) {
   });
 
   attachExternalLinkGuard(popup.webContents, tabName);
+  applyWebRTCPolicyToContents(popup.webContents, services.route(tabName));
   popup.loadURL(url);
 }
 
@@ -1416,6 +1439,7 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   hookPartition(partitionForTab(name), name);
   const targetSession = session.fromPartition(partitionForTab(name));
   try { view.webContents.setZoomFactor(services.zoom(name) || 1); } catch {}
+  applyWebRTCPolicyToContents(view.webContents, services.route(name));
   const proxyReady = targetSession.setProxy(proxyForRoute(services.route(name))).catch(() => {});
 
   attachReloadShortcuts(view.webContents);
@@ -1543,6 +1567,7 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   // the next click once the direct route is in place.
   void proxyReady.then(() => {
     if (!isViewUsable(view)) return;
+    applyWebRTCPolicyToContents(view.webContents, services.route(name));
     view.webContents.loadURL(url);
   });
 }
@@ -2076,7 +2101,10 @@ async function rememberGoogleEmail(page) {
 function openGoogleChooser(partition) {
   const targetSession = session.fromPartition(partition);
   try { targetSession.setUserAgent(app.userAgentFallback); } catch {}
-  if (proxyConfig) targetSession.setProxy(proxyConfig).catch(() => {});
+  if (proxyConfig) {
+    applyWebRTCPolicy(targetSession, "tunnel");
+    targetSession.setProxy(proxyConfig).catch(() => {});
+  }
   if (googleWindow && !googleWindow.isDestroyed()) {
     googleWindow.close();
   }
@@ -2095,6 +2123,7 @@ function openGoogleChooser(partition) {
   });
   googleWindow = popup;
   popup.sharedGoogle = partition === GOOGLE_PARTITION;
+  if (proxyConfig) applyWebRTCPolicyToContents(popup.webContents, "tunnel");
   const note = () => {
     const follow = popup.sharedGoogle ? rememberGoogleEmail(popup.webContents) : Promise.resolve();
     void follow.then(() => publishGoogle());
@@ -2137,7 +2166,17 @@ ipcMain.on("switch-tab", (_event, tabName) => {
 handle("services-list", () => services.list());
 
 handle("services-set-route", async (_event, payload) => {
-  try { return { success: true, status: await services.setRoute(payload && payload.id, payload && payload.route) }; }
+  try {
+    const status = await services.setRoute(payload && payload.id, payload && payload.route);
+    const id = payload && payload.id;
+    const accounts = services.accounts().filter((account) => account.serviceId === id);
+    const targets = await Promise.all(accounts.map((account) => configureAccountProxy(account)));
+    await Promise.all(accounts.map((account, index) => {
+      if (shouldKeepConnections(account.partition)) return undefined;
+      return targets[index].closeAllConnections().catch(() => {});
+    }));
+    return { success: true, status };
+  }
   catch (err) { return { success: false, error: err.message, status: services.list() }; }
 });
 

@@ -138,6 +138,15 @@ function buildBlackholeProxyConfig() {
   return pacProxyConfig(buildBlackholePac());
 }
 
+function webrtcIpHandlingPolicy(route, phase) {
+  // wireproxy is a TCP SOCKS proxy. Chromium still sends STUN over UDP from
+  // the real interface unless non-proxied UDP is disabled. Direct tabs keep
+  // the default policy so voice still works there.
+  if (route === "direct") return "default";
+  if (phase === "tunnel" || phase === "dropped") return "disable_non_proxied_udp";
+  return "default";
+}
+
 function electronCipher() {
   return {
     available() {
@@ -1219,6 +1228,7 @@ module.exports = {
   buildProxyConfig,
   buildBlackholePac,
   buildBlackholeProxyConfig,
+  webrtcIpHandlingPolicy,
   assertWireproxyArchive,
   wireproxyArchiveSha256,
   redactSecrets,

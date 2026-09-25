@@ -8,6 +8,7 @@ const assert = require("node:assert/strict");
 const {
   createWireguard,
   buildBlackholePac,
+  webrtcIpHandlingPolicy,
   assertWireproxyArchive,
   wireproxyDownloadUrls,
   wireproxyAssetName,
@@ -206,4 +207,12 @@ test("wireproxy downloads are pinned and hash-checked", () => {
   const pac = buildBlackholePac();
   assert.match(pac, /SOCKS5 127\.0\.0\.1:1/);
   assert.doesNotMatch(pac, /return 'DIRECT';\s*\}$/);
+});
+
+test("tunnel sessions block WebRTC UDP that would skip the SOCKS proxy", () => {
+  assert.equal(webrtcIpHandlingPolicy("tunnel", "tunnel"), "disable_non_proxied_udp");
+  assert.equal(webrtcIpHandlingPolicy("tunnel", "dropped"), "disable_non_proxied_udp");
+  assert.equal(webrtcIpHandlingPolicy("tunnel", "direct"), "default");
+  assert.equal(webrtcIpHandlingPolicy("direct", "tunnel"), "default");
+  assert.equal(webrtcIpHandlingPolicy("direct", "dropped"), "default");
 });
