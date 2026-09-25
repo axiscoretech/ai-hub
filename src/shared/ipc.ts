@@ -14,8 +14,12 @@ export const invokeChannels = [
   "wg-disconnect",
   "tunnel-cancel",
   "openclaw-status",
+  "openclaw-probe",
   "openclaw-start",
   "openclaw-dashboard",
+  "openclaw-update-status",
+  "openclaw-update",
+  "openclaw-install",
   "tasks-list",
   "tasks-create",
   "tasks-update",
@@ -59,6 +63,7 @@ export const sendChannels = [
   "reload-active-tab",
   "open-external",
   "set-content-theme",
+  "move-window-by",
 ] as const;
 
 export type InvokeChannel = (typeof invokeChannels)[number];

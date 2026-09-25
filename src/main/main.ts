@@ -1,5 +1,5 @@
 import { handle } from "./ipc-bind";
-const { app, BrowserWindow, BrowserView, ipcMain, session, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
 const path = require("path");
 
 if (process.env.AI_HUB_USER_DATA) {
@@ -30,6 +30,10 @@ const {
   inspectOpenClaw,
   startOpenClawGateway,
   openClawDashboard,
+  openClawUpdateStatus,
+  updateOpenClaw,
+  installOpenClaw,
+  probeGateway,
   isOpenClawControlUrl,
   DEFAULT_OPENCLAW_URL,
 } = require("./openclaw");
@@ -42,6 +46,9 @@ let proxyConfig = null;
 let tabState = {};
 let popupWindows = new Set<any>();
 let openclawSnapshot = null;
+let openclawAuthedUrl = "";
+let openclawAuthPromise = null;
+let openclawPresentPromise = null;
 let contentTheme = "dark";
 
 // Tab pages live in BrowserViews, outside the shell document. Point Chromium's
@@ -101,10 +108,10 @@ let tunnelProxy = null;
 let hubProxyPhase = "direct";
 
 function proxyForRoute(route) {
-  if (route === "direct") return { proxyRules: "" };
+  if (route === "direct") return { mode: "direct" };
   if (hubProxyPhase === "dropped") return buildBlackholeProxyConfig();
   if (hubProxyPhase === "tunnel" && tunnelProxy) return tunnelProxy;
-  return { proxyRules: "" };
+  return { mode: "direct" };
 }
 
 async function applyRoutedProxy() {
@@ -112,9 +119,12 @@ async function applyRoutedProxy() {
   await Promise.all(accounts.map((account) => (
     session.fromPartition(account.partition).setProxy(proxyForRoute(account.route))
   )));
-  await Promise.all(accounts.map((account) => (
-    session.fromPartition(account.partition).closeAllConnections().catch(() => {})
-  )));
+  await Promise.all(accounts.map((account) => {
+    if (account.partition === "persist:OpenClaw" || account.partition.startsWith("persist:OpenClaw:")) {
+      return undefined;
+    }
+    return session.fromPartition(account.partition).closeAllConnections().catch(() => {});
+  }));
 }
 
 async function applyHubProxy(config) {
@@ -160,6 +170,18 @@ const tasks = createTasks({
   },
 });
 
+function stripFragment(url) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.href;
+  } catch {
+    return url;
+  }
+}
+
 function rememberTabUrl(name, url) {
   if (!name || !url || url === "about:blank") return;
   if (shouldOpenInSystemBrowser(name, url)) return;
@@ -188,7 +210,7 @@ function parkView(name) {
   const view = views[name];
   if (!view) return;
   const key = view.accountKey || accountKey(name);
-  try { if (win && !win.isDestroyed()) win.removeBrowserView(view); } catch {}
+  try { detachPageView(view); } catch {}
   parkedViews.set(key, view);
   delete views[name];
 }
@@ -297,7 +319,7 @@ function layoutCompare() {
   const col = Math.floor(width / count);
   compareSlots.forEach((slot, index) => {
     if (!isViewUsable(slot.view)) return;
-    try { win.addBrowserView(slot.view); } catch {}
+    try { showPageView(slot.view, { keepOthers: true }); } catch {}
     try {
       slot.view.setBounds({
         x: index * col,
@@ -315,7 +337,7 @@ function closeCompare(options: any = {}) {
   compareFocus = null;
   compareTaskId = null;
   for (const slot of compareSlots) {
-    try { if (win && !win.isDestroyed()) win.removeBrowserView(slot.view); } catch {}
+    try { detachPageView(slot.view); } catch {}
   }
   compareSlots = [];
   if (win && !win.isDestroyed()) win.webContents.send("compare-status", { open: false });
@@ -332,7 +354,7 @@ async function startCompare(taskId) {
     try { await tasks.setWorkspace("chat"); } catch {}
   }
   for (const slot of compareSlots) {
-    try { if (win && !win.isDestroyed()) win.removeBrowserView(slot.view); } catch {}
+    try { detachPageView(slot.view); } catch {}
   }
   compareSlots = [];
   compareTaskId = task.id;
@@ -352,10 +374,7 @@ async function startCompare(taskId) {
     compareSlots.push({ service: assignment.service, view });
   }
   if (win && !win.isDestroyed()) {
-    try {
-      const current = win.getBrowserView();
-      if (current) win.removeBrowserView(current);
-    } catch {}
+    try { hideOtherPageViews(null); } catch {}
   }
   compareOpen = compareSlots.length >= 2;
   if (!compareOpen) return { success: false, error: "Couldn't open those services" };
@@ -425,7 +444,11 @@ function setupUpdates() {
   autoUpdater.on("update-downloaded", () => {
     if (win && !win.isDestroyed()) win.webContents.send("update-downloaded");
   });
+  autoUpdater.on("error", () => {});
   autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
 }
 
 // ── Extension registry ──────────────────────────────────────────────────────
@@ -716,6 +739,7 @@ function createWindow() {
     height: 900,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 20 },
+    acceptFirstMouse: true,
     backgroundColor: themeColor(),
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
@@ -733,6 +757,7 @@ function createWindow() {
   ignoreUnloadBlock(win.webContents);
   win.webContents.on("did-finish-load", () => {
     void startTunnelThenChats();
+    void loadOpenClawAuth();
   });
   win.loadFile(path.join(__dirname, "../renderer/index.html"));
   win.webContents.on("did-finish-load", () => {
@@ -755,8 +780,65 @@ function createWindow() {
   });
 }
 
+function clearPageTopDeadZone(webContents) {
+  if (!webContents || webContents.__pageGap) return;
+  webContents.__pageGap = true;
+  // macOS drops clicks in the top 60px of the page view. Move the site down
+  // so its header buttons land in the area that actually receives clicks.
+  const script = `(() => {
+    const apply = () => {
+      const root = document.documentElement;
+      if (!root || root.dataset.aiHubGap === "1") return;
+      root.dataset.aiHubGap = "1";
+      root.style.setProperty("position", "relative", "important");
+      root.style.setProperty("top", "56px", "important");
+      root.style.setProperty("height", "calc(100% - 56px)", "important");
+      root.style.setProperty("box-sizing", "border-box", "important");
+    };
+    apply();
+    if (!window.__aiHubGapWatch) {
+      window.__aiHubGapWatch = new MutationObserver(apply);
+      window.__aiHubGapWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    }
+  })()`;
+  const run = () => {
+    if (!webContents.isDestroyed()) webContents.executeJavaScript(script).catch(() => {});
+  };
+  webContents.on("dom-ready", run);
+  run();
+}
+
 function isViewUsable(view) {
   return !!(view && view.webContents && !view.webContents.isDestroyed());
+}
+
+function detachPageView(view) {
+  if (!win || win.isDestroyed() || !view) return;
+  try { win.contentView.removeChildView(view); } catch {}
+}
+
+function showPageView(view, options: any = {}) {
+  if (!win || win.isDestroyed() || !isViewUsable(view)) return;
+  if (!options.keepOthers) hideOtherPageViews(view);
+  const children = win.contentView.children || [];
+  if (!children.includes(view)) {
+    try { win.contentView.addChildView(view); } catch {}
+  }
+  resizeView(view);
+}
+
+function hideOtherPageViews(keep) {
+  const skip = new Set();
+  if (keep) skip.add(keep);
+  for (const view of Object.values(views)) {
+    if (view && !skip.has(view)) detachPageView(view);
+  }
+  for (const view of parkedViews.values()) {
+    if (view && !skip.has(view)) detachPageView(view);
+  }
+  for (const slot of compareSlots) {
+    if (slot && slot.view && !skip.has(slot.view)) detachPageView(slot.view);
+  }
 }
 
 function normalizeTheme(theme) {
@@ -807,12 +889,48 @@ function isHubWebContents(webContents) {
   return !!(win && !win.isDestroyed() && webContents && webContents === win.webContents);
 }
 
+const insertedThemeCss = new WeakMap();
+
 function syncGuestColorScheme(webContents) {
   if (!webContents || webContents.isDestroyed() || isHubWebContents(webContents)) return;
   try {
     const result = webContents.executeJavaScript(guestThemeScript());
     if (result && typeof result.catch === "function") result.catch(() => {});
   } catch {}
+}
+
+async function applyGuestColorScheme(webContents) {
+  if (!webContents || webContents.isDestroyed() || isHubWebContents(webContents)) return;
+  const scheme = resolvedContentTheme();
+  try {
+    const previous = insertedThemeCss.get(webContents);
+    if (previous) await webContents.removeInsertedCSS(previous);
+    const key = await webContents.insertCSS(
+      `html { color-scheme: ${scheme} !important; }`,
+      { cssOrigin: "user" },
+    );
+    insertedThemeCss.set(webContents, key);
+  } catch {}
+  try {
+    const dbg = webContents.debugger;
+    if (!dbg.isAttached()) dbg.attach("1.3");
+    await dbg.sendCommand("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-color-scheme", value: scheme }],
+    });
+  } catch {}
+  syncGuestColorScheme(webContents);
+}
+
+function eachGuestView(visit) {
+  const seen = new Set();
+  const take = (view) => {
+    if (!isViewUsable(view) || seen.has(view)) return;
+    seen.add(view);
+    visit(view);
+  };
+  for (const view of Object.values(views)) take(view);
+  for (const view of parkedViews.values()) take(view);
+  for (const slot of compareSlots) take(slot.view);
 }
 
 function paintViewTheme(view) {
@@ -829,11 +947,10 @@ function applyContentTheme(theme) {
     try { win.setBackgroundColor(color); } catch {}
   }
 
-  for (const view of Object.values(views)) {
-    if (!isViewUsable(view)) continue;
+  eachGuestView((view) => {
     paintViewTheme(view);
-    syncGuestColorScheme(view.webContents);
-  }
+    void applyGuestColorScheme(view.webContents);
+  });
 
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window || window.isDestroyed() || window === win) continue;
@@ -842,7 +959,7 @@ function applyContentTheme(theme) {
       if (url.startsWith("devtools://")) continue;
     } catch {}
     try { window.setBackgroundColor(color); } catch {}
-    syncGuestColorScheme(window.webContents);
+    void applyGuestColorScheme(window.webContents);
   }
 }
 
@@ -853,7 +970,9 @@ nativeTheme.on("updated", () => {
 
 function attachGuestTheme(webContents) {
   if (!webContents) return;
-  webContents.on("did-finish-load", () => syncGuestColorScheme(webContents));
+  webContents.on("did-finish-load", () => {
+    void applyGuestColorScheme(webContents);
+  });
 }
 
 function getTabUrl(name) {
@@ -1102,9 +1221,7 @@ function destroyAllViews() {
       rememberTabUrl(name, view.webContents.getURL());
     } catch {}
 
-    try {
-      win.removeBrowserView(view);
-    } catch {}
+    try { detachPageView(view); } catch {}
 
     try {
       view.webContents.removeAllListeners();
@@ -1130,7 +1247,7 @@ function destroyTabView(name) {
   } catch {}
 
   try {
-    win.removeBrowserView(view);
+    detachPageView(view);
   } catch {}
 
     try {
@@ -1276,21 +1393,20 @@ function openPopupWindow(tabName, url) {
 }
 
 function createTab(name, url = getTabUrl(name), options: any = {}) {
-  const view = new BrowserView({
+  const view = new WebContentsView({
     webPreferences: buildViewPreferences(name)
   });
   views[name] = view;
   view.accountKey = accountKey(name);
   paintViewTheme(view);
+  clearPageTopDeadZone(view.webContents);
   attachGuestTheme(view.webContents);
+  void applyGuestColorScheme(view.webContents);
   // Board mode keeps the view in `views` but must not put it back on the window.
   // setBrowserView here used to run before the detach, so a throw from loadURL
   // left the page covering the board.
   const showNow = !isBoardWorkspace() && !options.background;
-  if (showNow) {
-    win.setBrowserView(view);
-    resizeView(view);
-  }
+  if (showNow) showPageView(view);
 
   view.webContents.once("destroyed", () => {
     if (views[name] === view) delete views[name];
@@ -1298,8 +1414,9 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   });
 
   hookPartition(partitionForTab(name), name);
-  session.fromPartition(partitionForTab(name)).setProxy(proxyForRoute(services.route(name))).catch(() => {});
+  const targetSession = session.fromPartition(partitionForTab(name));
   try { view.webContents.setZoomFactor(services.zoom(name) || 1); } catch {}
+  const proxyReady = targetSession.setProxy(proxyForRoute(services.route(name))).catch(() => {});
 
   attachReloadShortcuts(view.webContents);
   attachBoardShortcut(view.webContents);
@@ -1321,26 +1438,36 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   // main document is ready; did-stop-loading is only a backup.
   let mainFrameLoading = false;
 
-  view.webContents.on("did-start-navigation", (details, _url, isInPlace, isMainFrameArg) => {
-    const isMainFrame = typeof details?.isMainFrame === "boolean" ? details.isMainFrame : isMainFrameArg;
-    const isSameDocument = typeof details?.isSameDocument === "boolean" ? details.isSameDocument : Boolean(isInPlace);
+  view.webContents.on("did-start-navigation", (event, details, isInPlace, isMainFrameArg) => {
+    const nav = details && typeof details === "object" && typeof details.isMainFrame === "boolean"
+      ? details
+      : (event && typeof event === "object" && typeof event.isMainFrame === "boolean" ? event : null);
+    const isMainFrame = nav ? nav.isMainFrame : isMainFrameArg;
+    const isSameDocument = nav
+      ? Boolean(nav.isSameDocument || nav.isInPlace)
+      : Boolean(isInPlace);
     if (!isMainFrame || isSameDocument) return;
+    // OpenClaw keeps navigating inside the already open page. Those loads must
+    // not leave the spinner next to its name running.
+    if (name === OPENCLAW_TAB && view.openclawBootstrapped) return;
     mainFrameLoading = true;
     win.webContents.send("tab-progress", name, "start");
   });
   view.webContents.on("did-navigate", (_event, navigatedUrl) => {
-    rememberTabUrl(name, navigatedUrl);
+    rememberTabUrl(name, name === OPENCLAW_TAB ? stripFragment(navigatedUrl) : navigatedUrl);
   });
   view.webContents.on("did-navigate-in-page", (_event, navigatedUrl) => {
-    rememberTabUrl(name, navigatedUrl);
+    rememberTabUrl(name, name === OPENCLAW_TAB ? stripFragment(navigatedUrl) : navigatedUrl);
   });
   view.webContents.on("did-finish-load", () => {
-    if (!mainFrameLoading) return;
+    if (name === OPENCLAW_TAB) view.openclawLoadPending = false;
+    if (!mainFrameLoading && name !== OPENCLAW_TAB) return;
     mainFrameLoading = false;
     win.webContents.send("tab-progress", name, "finish");
   });
   view.webContents.on("did-stop-loading", () => {
-    if (!mainFrameLoading) return;
+    if (name === OPENCLAW_TAB) view.openclawLoadPending = false;
+    if (!mainFrameLoading && name !== OPENCLAW_TAB) return;
     mainFrameLoading = false;
     win.webContents.send("tab-progress", name, "finish");
   });
@@ -1350,7 +1477,19 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
     if (!isMainFrame || errorCode === -3) return;
     mainFrameLoading = false;
     win.webContents.send("tab-progress", name, "fail");
+    if (name === OPENCLAW_TAB && !view.openclawRetried) {
+      view.openclawRetried = true;
+      view.openclawLoadPending = false;
+      const retryUrl = openclawAuthedUrl || url;
+      void session.fromPartition(partitionForTab(name)).setProxy({ mode: "direct" }).catch(() => {}).then(() => {
+        if (!isViewUsable(view) || activeTab !== OPENCLAW_TAB) return;
+        view.openclawLoadPending = true;
+        view.webContents.loadURL(retryUrl);
+      });
+      return;
+    }
     if (name === OPENCLAW_TAB) {
+      view.openclawBootstrapped = false;
       hideOpenClawView();
       openclawSnapshot = {
         ...(openclawSnapshot || {}),
@@ -1398,17 +1537,32 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   attachExternalLinkGuard(view.webContents, name);
   if (options.googleClick) armGoogleClick(view, name);
   if (!options.background) activeTab = name;
-  view.webContents.loadURL(url);
+  if (name === OPENCLAW_TAB) view.openclawLoadPending = true;
+  // The first navigation has to wait until the proxy is applied. Otherwise a
+  // localhost page can be sent through the tunnel and fail, then succeed on
+  // the next click once the direct route is in place.
+  void proxyReady.then(() => {
+    if (!isViewUsable(view)) return;
+    view.webContents.loadURL(url);
+  });
 }
 
 function detachView(name) {
   const view = views[name];
   if (!win || win.isDestroyed() || !isViewUsable(view)) return;
-  try { win.removeBrowserView(view); } catch {}
+  try { detachPageView(view); } catch {}
 }
 
 function hideOpenClawView() {
   detachView(OPENCLAW_TAB);
+}
+
+function openClawUrlHasToken(url) {
+  try {
+    return new URL(url).hash.includes("token=");
+  } catch {
+    return false;
+  }
 }
 
 function ensureOpenClawView(targetUrl, forceLoad) {
@@ -1416,19 +1570,23 @@ function ensureOpenClawView(targetUrl, forceLoad) {
   const url = targetUrl || tabs[OPENCLAW_TAB];
   if (!isViewUsable(views[OPENCLAW_TAB])) {
     createTab(OPENCLAW_TAB, url);
+    if (views[OPENCLAW_TAB]) {
+      if (openClawUrlHasToken(url)) views[OPENCLAW_TAB].openclawBootstrapped = true;
+      concealOpenClawChrome(views[OPENCLAW_TAB].webContents);
+    }
     return;
   }
 
   const view = views[OPENCLAW_TAB];
   activeTab = OPENCLAW_TAB;
-  if (!isBoardWorkspace()) {
-    win.setBrowserView(view);
-    resizeView(view);
-  }
+  if (!isBoardWorkspace()) showPageView(view);
 
   let current = "";
   try { current = view.webContents.getURL(); } catch {}
   let needsLoad = Boolean(forceLoad) || !current || current === "about:blank" || current.startsWith("chrome-error://");
+  if (!needsLoad && openClawUrlHasToken(url) && !openClawUrlHasToken(current) && !view.openclawBootstrapped) {
+    needsLoad = true;
+  }
   if (!needsLoad && !forceLoad) {
     try {
       needsLoad = new URL(current).origin !== new URL(url).origin;
@@ -1436,7 +1594,101 @@ function ensureOpenClawView(targetUrl, forceLoad) {
       needsLoad = true;
     }
   }
-  if (needsLoad) view.webContents.loadURL(url);
+  if (needsLoad) {
+    if (view.openclawLoadPending) {
+      concealOpenClawChrome(view.webContents);
+      return;
+    }
+    view.openclawLoadPending = true;
+    void session.fromPartition(partitionForTab(OPENCLAW_TAB)).setProxy({ mode: "direct" }).catch(() => {}).then(() => {
+      if (!isViewUsable(view)) return;
+      if (openClawUrlHasToken(url)) view.openclawBootstrapped = true;
+      view.webContents.loadURL(url);
+      concealOpenClawChrome(view.webContents);
+    });
+    return;
+  }
+  concealOpenClawChrome(view.webContents);
+}
+
+function concealOpenClawChrome(webContents) {
+  if (!webContents || webContents.isDestroyed()) return;
+  const hideBanner = () => {
+    if (webContents.isDestroyed()) return;
+    webContents.insertCSS("openclaw-update-banner,.update-banner{display:none !important}").catch(() => {});
+    webContents.executeJavaScript(`(() => {
+      const hide = () => {
+        document.querySelectorAll("openclaw-update-banner, .update-banner").forEach((node) => {
+          node.style.setProperty("display", "none", "important");
+        });
+      };
+      hide();
+      if (!window.__aiHubHideOpenClawUpdate) {
+        window.__aiHubHideOpenClawUpdate = new MutationObserver(hide);
+        window.__aiHubHideOpenClawUpdate.observe(document.documentElement, { childList: true, subtree: true });
+      }
+    })()`, true).catch(() => {});
+  };
+  hideBanner();
+  if (webContents.openclawBannerHook) return;
+  webContents.openclawBannerHook = true;
+  webContents.on("did-finish-load", hideBanner);
+  webContents.on("dom-ready", hideBanner);
+}
+
+function cacheOpenClawAuth(url) {
+  if (openClawUrlHasToken(url)) openclawAuthedUrl = url;
+}
+
+function loadOpenClawAuth() {
+  if (openclawAuthedUrl) return Promise.resolve(openclawAuthedUrl);
+  if (!openclawAuthPromise) {
+    openclawAuthPromise = openClawDashboard().then((page) => {
+      openclawAuthPromise = null;
+      if (page && page.authed && openClawUrlHasToken(page.url)) {
+        openclawAuthedUrl = page.url;
+        return openclawAuthedUrl;
+      }
+      return "";
+    }, () => {
+      openclawAuthPromise = null;
+      return "";
+    });
+  }
+  return openclawAuthPromise;
+}
+
+function presentOpenClawPage() {
+  if (openclawPresentPromise) return openclawPresentPromise;
+  openclawPresentPromise = presentOpenClawPageOnce().finally(() => {
+    openclawPresentPromise = null;
+  });
+  return openclawPresentPromise;
+}
+
+async function presentOpenClawPageOnce() {
+  if (!win || win.isDestroyed() || activeTab !== OPENCLAW_TAB || isBoardWorkspace()) {
+    hideOpenClawView();
+    return false;
+  }
+  const existing = views[OPENCLAW_TAB];
+  if (isViewUsable(existing) && existing.openclawBootstrapped) {
+    ensureOpenClawView(openclawAuthedUrl || tabs[OPENCLAW_TAB], false);
+    return true;
+  }
+  const url = openclawAuthedUrl || await loadOpenClawAuth();
+  if (activeTab !== OPENCLAW_TAB || isBoardWorkspace()) return false;
+  if (!url) {
+    hideOpenClawView();
+    return false;
+  }
+  cacheOpenClawAuth(url);
+  ensureOpenClawView(url, true);
+  return true;
+}
+
+function notifyOpenClawPage(ready) {
+  if (win && !win.isDestroyed()) win.webContents.send("openclaw-page", { ready: Boolean(ready) });
 }
 
 function applyOpenClawSnapshot(status) {
@@ -1446,8 +1698,9 @@ function applyOpenClawSnapshot(status) {
     hideOpenClawView();
     return status;
   }
-  if (status && status.gatewayUp) ensureOpenClawView(status.url, false);
-  else hideOpenClawView();
+  const view = views[OPENCLAW_TAB];
+  const opening = Boolean(openclawPresentPromise) || Boolean(view && view.openclawBootstrapped);
+  if ((!status || !status.gatewayUp) && !opening) hideOpenClawView();
   return status;
 }
 
@@ -1458,9 +1711,13 @@ function switchTab(name) {
   const board = isBoardWorkspace();
   if (name === OPENCLAW_TAB) {
     activeTab = name;
-    if (board) hideOpenClawView();
-    else if (openclawSnapshot && openclawSnapshot.gatewayUp) ensureOpenClawView(openclawSnapshot.url, false);
-    else hideOpenClawView();
+    if (board) {
+      hideOpenClawView();
+    } else if (views[OPENCLAW_TAB] && views[OPENCLAW_TAB].openclawBootstrapped) {
+      ensureOpenClawView(openclawAuthedUrl || tabs[OPENCLAW_TAB], false);
+    } else {
+      void presentOpenClawPage().then((ready) => notifyOpenClawPage(ready));
+    }
     win.webContents.send("tab-active", name);
     return;
   }
@@ -1471,8 +1728,7 @@ function switchTab(name) {
   } else if (board) {
     activeTab = name;
   } else {
-    win.setBrowserView(views[name]);
-    resizeView(views[name]);
+    showPageView(views[name]);
     try {
       rememberTabUrl(name, views[name].webContents.getURL());
     } catch {}
@@ -1511,7 +1767,7 @@ function isBoardWorkspace() {
 function isViewAttached(view) {
   if (!win || win.isDestroyed() || !isViewUsable(view)) return false;
   try {
-    return win.getBrowserView() === view;
+    return (win.contentView.children || []).includes(view);
   } catch {
     return false;
   }
@@ -1545,8 +1801,7 @@ function applyWorkspaceView(status) {
     switchTab(name);
     return;
   }
-  win.setBrowserView(views[activeTab]);
-  resizeView(views[activeTab]);
+  showPageView(views[activeTab]);
   win.webContents.send("tab-active", activeTab);
 }
 
@@ -1576,8 +1831,7 @@ function showTaskService(status) {
     createTab(service, saved || fallback);
   } else {
     const view = views[service];
-    win.setBrowserView(view);
-    resizeView(view);
+    showPageView(view);
     activeTab = service;
     if (saved) {
       let current = "";
@@ -2007,6 +2261,15 @@ ipcMain.on("set-content-theme", (_event, theme) => {
   applyContentTheme(theme);
 });
 
+ipcMain.on("move-window-by", (_event, dx, dy) => {
+  if (!win || win.isDestroyed()) return;
+  const x = Number(dx);
+  const y = Number(dy);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const [left, top] = win.getPosition();
+  win.setPosition(Math.round(left + x), Math.round(top + y));
+});
+
 ipcMain.on("set-topbar-height", (_event, h) => {
   const next = Number(h);
   if (!Number.isFinite(next) || next < 0 || next > 4000) return;
@@ -2062,20 +2325,67 @@ handle("wg-disconnect", async () => {
   }
 });
 
+handle("openclaw-probe", async () => {
+  const url = openclawSnapshot && openclawSnapshot.url;
+  const up = await probeGateway(url);
+  return { gatewayUp: Boolean(up) };
+});
+
 handle("openclaw-status", async () => {
   const status = await inspectOpenClaw();
-  return applyOpenClawSnapshot(status);
+  applyOpenClawSnapshot(status);
+  if (status && status.gatewayUp && activeTab === OPENCLAW_TAB && !isBoardWorkspace()) {
+    status.pageReady = await presentOpenClawPage();
+    if (!status.pageReady) {
+      status.error = "OpenClaw is running, but this window could not open its page. Check again.";
+    }
+  }
+  return status;
 });
 
 handle("openclaw-start", async () => {
   const result = await startOpenClawGateway();
   applyOpenClawSnapshot(result.status);
+  if (result.status && result.status.gatewayUp && activeTab === OPENCLAW_TAB) {
+    const opened = await presentOpenClawPage();
+    if (result.status) result.status.pageReady = opened;
+  }
   return {
     success: Boolean(result.status && result.status.gatewayUp),
-    error: result.error || null,
-    log: result.log || "",
+    error: null,
     status: result.status,
   };
+});
+
+handle("openclaw-install", async () => {
+  const installed = await installOpenClaw();
+  if (!installed || !installed.success) {
+    return { success: false, error: (installed && installed.error) || "OpenClaw could not be installed." };
+  }
+  const result = await startOpenClawGateway();
+  applyOpenClawSnapshot(result.status);
+  if (result.status && result.status.gatewayUp && activeTab === OPENCLAW_TAB) {
+    const opened = await presentOpenClawPage();
+    if (result.status) result.status.pageReady = opened;
+  }
+  return {
+    success: Boolean(result.status && result.status.gatewayUp),
+    error: result.status && result.status.gatewayUp ? null : "OpenClaw is installed, but it did not start.",
+    status: result.status,
+  };
+});
+
+handle("openclaw-update-status", () => openClawUpdateStatus());
+
+handle("openclaw-update", async () => {
+  const result = await updateOpenClaw();
+  if (result && result.success && activeTab === OPENCLAW_TAB) {
+    const view = views[OPENCLAW_TAB];
+    if (view) view.openclawBootstrapped = false;
+    const opened = await presentOpenClawPage();
+    return { success: opened, error: opened ? null : "OpenClaw updated, but the page did not reopen." };
+  }
+  return { success: false, error: (result && result.error) || "OpenClaw could not be updated." };
 });
 
 handle("openclaw-dashboard", async () => {
@@ -2323,7 +2633,7 @@ app.on("browser-window-created", (_event, window) => {
       if (url.startsWith("devtools://")) return;
     } catch {}
     try { window.setBackgroundColor(themeColor()); } catch {}
-    syncGuestColorScheme(window.webContents);
+    void applyGuestColorScheme(window.webContents);
   };
   window.webContents.on("did-finish-load", apply);
 });
@@ -2353,7 +2663,7 @@ function forceExit() {
     popupWindows.clear();
     for (const view of Object.values(views)) {
       try {
-        if (win && !win.isDestroyed()) win.removeBrowserView(view);
+        detachPageView(view);
       } catch {}
       try { view.webContents.destroy(); } catch {}
     }

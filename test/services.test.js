@@ -19,13 +19,13 @@ function makeApi() {
   };
 }
 
-test("a new layout hides OpenClaw and keeps the legacy partition", () => {
+test("a new layout shows OpenClaw and keeps the legacy partition", () => {
   const ctx = makeApi();
   try {
     const status = ctx.api.list();
     const openclaw = status.services.find((item) => item.id === OPENCLAW_ID);
     const claude = status.services.find((item) => item.id === "Claude");
-    assert.equal(openclaw.hidden, true);
+    assert.equal(openclaw.hidden, false);
     assert.equal(claude.hidden, false);
     assert.equal(claude.accounts[0].partition, "persist:Claude");
     assert.equal(claude.route, "tunnel");
@@ -98,4 +98,36 @@ test("stream end matches a known completion and ignores page loads", () => {
     method: "POST",
     statusCode: 200,
   }), false);
+});
+
+test("an older layout shows OpenClaw again, and a later hide stays hidden", async () => {
+  const ctx = makeApi();
+  try {
+    const id = "OpenClaw";
+    const folder = ctx.dir;
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "services.json"), JSON.stringify({
+      services: [{
+        id,
+        name: "OpenClaw",
+        url: "http://127.0.0.1:18789/",
+        builtin: true,
+        route: "tunnel",
+        hidden: true,
+        order: 9,
+        accounts: [{ id: "default", label: "Default" }],
+        activeAccountId: "default",
+      }],
+    }));
+    const shown = ctx.api.list();
+    assert.equal(shown.services.find((item) => item.id === "OpenClaw").hidden, false);
+    await ctx.api.setHidden("OpenClaw", true);
+    const again = createServices({
+      getUserDataPath: () => ctx.dir,
+      openclawUrl: "http://127.0.0.1:18789/",
+    });
+    assert.equal(again.list().services.find((item) => item.id === "OpenClaw").hidden, true);
+  } finally {
+    ctx.cleanup();
+  }
 });

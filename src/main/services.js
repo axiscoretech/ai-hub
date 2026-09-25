@@ -56,8 +56,8 @@ function freshService(builtin, order) {
     name: builtin.name,
     url: builtin.url,
     builtin: true,
-    route: "tunnel",
-    hidden: builtin.id === OPENCLAW_ID,
+    route: builtin.id === OPENCLAW_ID ? "direct" : "tunnel",
+    hidden: false,
     order,
     zoom: 1,
     activeAccountId: DEFAULT_ACCOUNT,
@@ -150,6 +150,7 @@ function createServices(options = {}) {
     const body = JSON.stringify({
       hotkey,
       spellcheckLanguages,
+      rememberTabVisibility: true,
       services: services.map((service) => ({
         id: service.id,
         name: service.name,
@@ -196,7 +197,7 @@ function createServices(options = {}) {
       name: builtin ? builtin.name : sanitizeLabel(entry.name, "Service"),
       url: builtin ? builtin.url : customUrl,
       builtin: Boolean(builtin),
-      route: entry.route === "direct" ? "direct" : "tunnel",
+      route: entry.id === OPENCLAW_ID ? "direct" : (entry.route === "direct" ? "direct" : "tunnel"),
       hidden: entry.hidden === true,
       order: Number.isInteger(entry.order) ? entry.order : order,
       zoom: Number.isFinite(zoom) ? Math.min(3, Math.max(0.5, zoom)) : 1,
@@ -226,6 +227,13 @@ function createServices(options = {}) {
       spellcheckLanguages = Array.isArray(raw.spellcheckLanguages)
         ? raw.spellcheckLanguages.filter((item) => typeof item === "string" && LANG_RE.test(item)).slice(0, 4)
         : [];
+      if (raw.rememberTabVisibility !== true) {
+        const openclaw = services.find((item) => item.id === OPENCLAW_ID);
+        if (openclaw && openclaw.hidden) {
+          openclaw.hidden = false;
+          save();
+        }
+      }
     } catch {
       seed();
     }
@@ -325,6 +333,7 @@ function createServices(options = {}) {
         load();
         const service = findService(id);
         if (!service) throw new Error("Unknown service");
+        if (service.id === OPENCLAW_ID) return snapshot();
         const next = route === "direct" ? "direct" : "tunnel";
         if (service.route === next) return snapshot();
         service.route = next;

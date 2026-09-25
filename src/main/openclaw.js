@@ -8,7 +8,7 @@ const { spawn } = require("child_process");
 // Talk to the openclaw CLI only. Do not read or write ~/.openclaw state.
 const DEFAULT_PORT = 18789;
 const DEFAULT_OPENCLAW_URL = "http://127.0.0.1:18789/";
-const INSTALL_COMMAND = "curl -fsSL https://openclaw.ai/install.sh | bash";
+const INSTALL_URL = "https://openclaw.ai/install.sh";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 const controlPorts = new Set([DEFAULT_PORT]);
@@ -66,11 +66,16 @@ function toPublicUrl(url) {
   return parsed.origin + (pathName === "/" ? "/" : pathName);
 }
 
-function rememberControlUrl(url) {
-  const parsed = parseLoopbackHttp(url);
-  if (!parsed) return null;
+function controlUrlWithToken(cleanUrl, token) {
+  const parsed = parseLoopbackHttp(cleanUrl);
+  const secret = typeof token === "string" ? token.trim().replace(/^["']|["']$/g, "") : "";
+  if (!parsed || !secret || /\s/.test(secret) || secret === "null" || secret === "undefined") return null;
   notePort(parsed.port);
-  return toPublicUrl(parsed.href);
+  parsed.username = "";
+  parsed.password = "";
+  parsed.search = "";
+  parsed.hash = `token=${encodeURIComponent(secret)}`;
+  return parsed.href;
 }
 
 function redact(text) {
@@ -151,15 +156,19 @@ function runOpenclaw(bin, args, timeoutMs) {
     let stderr = "";
     let settled = false;
     let child;
+    const env = {
+      ...process.env,
+      // Embedding docs: never let a Gateway child treat Electron as Node.
+      OPENCLAW_EXEC_SHELL_SNAPSHOT: "0",
+    };
+    for (const key of Object.keys(env)) {
+      if (key.startsWith("ELECTRON_") || key === "ATOM_SHELL_INTERNAL_RUN_AS_NODE") delete env[key];
+    }
     try {
       child = spawn(bin, args, {
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          // Embedding docs: never let a Gateway child treat Electron as Node.
-          OPENCLAW_EXEC_SHELL_SNAPSHOT: "0",
-        },
+        env,
       });
     } catch (err) {
       resolve({ code: null, stdout: "", stderr: err.message || "Could not start openclaw", timedOut: false });
@@ -306,8 +315,89 @@ async function collectStatus(bin) {
   };
 }
 
+function probeGateway(url) {
+  return probeControlUrl(url || DEFAULT_OPENCLAW_URL);
+}
+
 function inspectOpenClaw() {
   return enqueue(async () => collectStatus(findOpenclaw()));
+}
+
+function openClawUpdateStatus() {
+  return enqueue(async () => {
+    const bin = findOpenclaw();
+    if (!bin) return { available: false, version: "" };
+    const result = await runOpenclaw(bin, ["update", "status", "--json", "--timeout", "20"], 25000);
+    const data = parseJsonObject(result.stdout);
+    const availability = data && data.availability;
+    return {
+      available: Boolean(availability && availability.available),
+      version: availability && availability.latestVersion ? String(availability.latestVersion) : "",
+    };
+  });
+}
+
+function updateOpenClaw() {
+  return enqueue(async () => {
+    const bin = findOpenclaw();
+    if (!bin) return { success: false, error: "OpenClaw is not installed." };
+    const result = await runOpenclaw(bin, ["update", "--yes", "--json", "--timeout", "600"], 620000);
+    const data = parseJsonObject(result.stdout);
+    if (result.code !== 0 || (data && data.ok === false)) {
+      return { success: false, error: "OpenClaw could not be updated." };
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (await probeControlUrl(DEFAULT_OPENCLAW_URL)) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return { success: true, error: null };
+  });
+}
+
+function downloadInstaller(url, dest, redirectsLeft) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, { headers: { "User-Agent": "AI-Hub" } }, (response) => {
+      const status = response.statusCode || 0;
+      if (status >= 300 && status < 400 && response.headers.location) {
+        response.resume();
+        if (redirectsLeft <= 0) {
+          reject(new Error("redirect"));
+          return;
+        }
+        downloadInstaller(new URL(response.headers.location, url).href, dest, redirectsLeft - 1).then(resolve, reject);
+        return;
+      }
+      if (status !== 200) {
+        response.resume();
+        reject(new Error("status"));
+        return;
+      }
+      const file = fs.createWriteStream(dest, { mode: 0o600 });
+      response.pipe(file);
+      file.on("error", reject);
+      file.on("finish", () => file.close(() => resolve()));
+    });
+    request.on("error", reject);
+  });
+}
+
+function installOpenClaw() {
+  return enqueue(async () => {
+    if (findOpenclaw()) return { success: true, error: null };
+    const dest = path.join(os.tmpdir(), `ai-hub-openclaw-install-${process.pid}.sh`);
+    try {
+      await downloadInstaller(INSTALL_URL, dest, 3);
+      const result = await runOpenclaw("/bin/bash", [dest], 600000);
+      if (result.code !== 0 || !findOpenclaw()) {
+        return { success: false, error: "OpenClaw could not be installed." };
+      }
+      return { success: true, error: null };
+    } catch {
+      return { success: false, error: "OpenClaw could not be installed." };
+    } finally {
+      fs.unlink(dest, () => {});
+    }
+  });
 }
 
 function startOpenClawGateway() {
@@ -324,11 +414,10 @@ function startOpenClawGateway() {
 
     const args = before.serviceInstalled ? ["gateway", "start"] : ["gateway", "install"];
     const started = await runOpenclaw(bin, args, 90000);
-    let combined = [`$ openclaw ${args.join(" ")}`, started.stdout, started.stderr].filter(Boolean).join("\n");
+    const startedText = `${started.stdout}\n${started.stderr}`;
 
-    if (args[1] === "start" && started.code !== 0 && /gateway install|not installed|no managed service/i.test(combined)) {
-      const installed = await runOpenclaw(bin, ["gateway", "install"], 90000);
-      combined = [combined, "$ openclaw gateway install", installed.stdout, installed.stderr].filter(Boolean).join("\n");
+    if (args[1] === "start" && started.code !== 0 && /gateway install|not installed|no managed service/i.test(startedText)) {
+      await runOpenclaw(bin, ["gateway", "install"], 90000);
     }
 
     const url = before.url || DEFAULT_OPENCLAW_URL;
@@ -338,16 +427,11 @@ function startOpenClawGateway() {
     }
 
     const status = await collectStatus(bin);
-    const log = redact(combined);
-    if (!status.gatewayUp) {
-      status.error = log || status.error || "Gateway is still not reachable.";
-    } else {
-      status.error = null;
-    }
+    status.error = status.gatewayUp ? null : "OpenClaw did not start.";
     return {
       status,
-      error: status.gatewayUp ? null : status.error,
-      log: status.gatewayUp ? "" : log,
+      error: status.error,
+      log: "",
     };
   });
 }
@@ -370,17 +454,62 @@ function clipboardApi() {
   }
 }
 
-async function dashboardFromNoOpen(bin) {
-  const clipboard = clipboardApi();
-  let previous = "";
-  try { previous = clipboard ? clipboard.readText() : ""; } catch { previous = ""; }
+function rememberControlUrl(url) {
+  const parsed = parseLoopbackHttp(url);
+  if (!parsed) return null;
+  notePort(parsed.port);
+  return toPublicUrl(parsed.href);
+}
 
+function readPasteboard() {
+  // OpenClaw copies with the system pasteboard (pbcopy). Electron's clipboard
+  // often still has the previous value, so the first read must come from pbpaste.
+  if (process.platform === "darwin") {
+    try {
+      return require("child_process").execFileSync("pbpaste", { encoding: "utf8", timeout: 2000 });
+    } catch {}
+  }
+  const clipboard = clipboardApi();
+  try { return clipboard ? String(clipboard.readText() || "") : ""; } catch { return ""; }
+}
+
+function readClipboard() {
+  return readPasteboard();
+}
+
+function waitForTokenPaste(previous) {
+  return new Promise((resolve) => {
+    let left = 15;
+    const tick = () => {
+      const pasted = readPasteboard();
+      if (pasted && pasted !== previous && pasted.includes("#token=")) {
+        resolve(pasted);
+        return;
+      }
+      left -= 1;
+      if (left <= 0) {
+        resolve(pasted);
+        return;
+      }
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
+
+function writeClipboard(text) {
+  const clipboard = clipboardApi();
+  try { if (clipboard) clipboard.writeText(text); } catch {}
+  if (process.platform === "darwin") {
+    try { require("child_process").execFileSync("pbcopy", { input: text }); } catch {}
+  }
+}
+
+async function dashboardFromNoOpen(bin) {
+  const previous = readPasteboard();
   const result = await runOpenclaw(bin, ["dashboard", "--no-open"], 35000);
-  let pasted = "";
-  try { pasted = clipboard ? clipboard.readText() : ""; } catch { pasted = ""; }
-  try {
-    if (clipboard && previous !== pasted) clipboard.writeText(previous);
-  } catch {}
+  const pasted = await waitForTokenPaste(previous);
+  if (previous !== pasted) writeClipboard(previous);
 
   if (result.code !== 0) {
     return {
@@ -391,8 +520,10 @@ async function dashboardFromNoOpen(bin) {
   }
 
   const printed = firstHttpUrl(result.stdout);
-  const clipChanged = pasted && pasted !== previous;
-  const clipUrl = clipChanged ? firstHttpUrl(pasted) : "";
+  const announced = /copied to clipboard|token-authenticated url/i.test(`${result.stdout}\n${result.stderr}`);
+  const pastedUrl = firstHttpUrl(pasted);
+  const pastedTokenUrl = pastedUrl && pastedUrl.includes("#token=") && isOpenClawControlUrl(pastedUrl) ? pastedUrl : "";
+  const clipUrl = pastedTokenUrl && (announced || pasted !== previous) ? pastedTokenUrl : "";
   const candidate = clipUrl || printed;
   const clean = candidate ? rememberControlUrl(candidate) : null;
   if (!candidate || !clean || !isOpenClawControlUrl(candidate)) {
@@ -403,37 +534,26 @@ async function dashboardFromNoOpen(bin) {
     };
   }
 
-  const pairingUrl = clipUrl && isOpenClawControlUrl(clipUrl) ? clipUrl : null;
   return {
-    url: pairingUrl || candidate,
+    url: clipUrl || candidate,
     cleanUrl: clean,
-    error: pairingUrl ? null : "Opened the dashboard without a one-time pairing link. Try Open dashboard again.",
+    error: clipUrl ? null : "Opened the dashboard without a one-time pairing link. Try Open dashboard again.",
   };
 }
 
 async function dashboardTarget(bin) {
-  const jsonRun = await runOpenclaw(bin, ["dashboard", "--json"], 35000);
-  if (unrecognizedJsonFlag(jsonRun)) return dashboardFromNoOpen(bin);
-
-  const data = parseJsonObject(jsonRun.stdout) || parseJsonObject(jsonRun.stderr);
-  if (data && data.ok === false) {
-    return {
-      url: null,
-      cleanUrl: null,
-      error: redact(data.reason || jsonRun.stderr || "The Gateway is not ready for a dashboard link."),
-    };
+  const copied = await dashboardFromNoOpen(bin);
+  if (copied && copied.url && copied.url.includes("#token=") && isOpenClawControlUrl(copied.url)) {
+    return { ...copied, authed: true };
   }
 
-  const browserUrl = data && typeof data.browserUrl === "string" ? data.browserUrl : "";
-  const clean = browserUrl ? rememberControlUrl(browserUrl) : null;
-  if (browserUrl && clean && isOpenClawControlUrl(browserUrl)) {
-    return { url: browserUrl, cleanUrl: clean, error: null };
-  }
-
+  const status = await collectStatus(bin);
+  const clean = status && status.url ? status.url : DEFAULT_OPENCLAW_URL;
   return {
     url: null,
-    cleanUrl: null,
-    error: redact(jsonRun.stderr || jsonRun.stdout || "openclaw dashboard --json did not return a browserUrl"),
+    cleanUrl: clean,
+    authed: false,
+    error: "OpenClaw did not give this window a way to open its page.",
   };
 }
 
@@ -450,13 +570,17 @@ function openClawDashboard() {
 module.exports = {
   DEFAULT_PORT,
   DEFAULT_OPENCLAW_URL,
-  INSTALL_COMMAND,
+  probeGateway,
   findOpenclaw,
   inspectOpenClaw,
   startOpenClawGateway,
   openClawDashboard,
+  openClawUpdateStatus,
+  updateOpenClaw,
+  installOpenClaw,
   isOpenClawControlUrl,
   notePort,
   rememberControlUrl,
+  controlUrlWithToken,
   toPublicUrl,
 };

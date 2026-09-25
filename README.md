@@ -33,7 +33,7 @@ A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Gr
 - **Live tabs** — switching services does not reload the page
 - **Compare** — put two or three chats side by side, insert the task text into the focused chat without sending it, and keep the task board
 - **WireGuard** — send the hub tabs you choose through a WireGuard config. Other services can stay on a direct connection. This does not change the rest of your Mac, PC, or Linux machine
-- **Your own sites** — add an https address when a service is missing from the list. OpenClaw is hidden until you turn it on
+- **Your own sites** — add an https address when a service is missing from the list. Hide a tab from the flag panel when you do not want it
 - **Theme** — dark, light, or match the system
 - **OpenClaw** — a tab for a local OpenClaw gateway, if you have one installed
 

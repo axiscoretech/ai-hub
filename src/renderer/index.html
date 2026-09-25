@@ -8,8 +8,14 @@
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
-      html, body { color-scheme: dark; }
-
+      html, body {
+        height: 100%;
+        color-scheme: dark;
+        -webkit-app-region: no-drag;
+      }
+      html { --shell-inset: 60px; }
+      html[data-theme="light"],
+      body[data-theme="light"] { color-scheme: light; }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background: #1e1e1e;
@@ -37,8 +43,7 @@
         height: 60px;
         background: #1e1e1e;
         border-bottom: 1px solid #333;
-        -webkit-app-region: drag;
-        overflow: hidden;
+        -webkit-app-region: no-drag;
         z-index: 50;
       }
       #google-overlay { display: none; }
@@ -159,7 +164,7 @@
         border-radius: 7px;
         padding: 4px 8px;
       }
-      #find-bar, #compare-bar, #update-bar {
+      #find-bar, #compare-bar, #update-bar, #oc-update-bar {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -169,8 +174,8 @@
         font-size: 12px;
         -webkit-app-region: no-drag;
       }
-      #find-bar[hidden], #compare-bar[hidden], #update-bar[hidden] { display: none; }
-      #find-bar button, #compare-bar button, #update-bar button, #account-add {
+      #find-bar[hidden], #compare-bar[hidden], #update-bar[hidden], #oc-update-bar[hidden] { display: none; }
+      #find-bar button, #compare-bar button, #update-bar button, #oc-update-bar button, #account-add {
         font: inherit;
         font-size: 12px;
         color: #eee;
@@ -184,7 +189,8 @@
       .svc-row input[type="text"] { flex: 1; min-width: 0; }
       body[data-theme="light"] #find-bar,
       body[data-theme="light"] #compare-bar,
-      body[data-theme="light"] #update-bar { background: #fff; color: #1f2937; }
+      body[data-theme="light"] #update-bar,
+      body[data-theme="light"] #oc-update-bar { background: #fff; color: #1f2937; }
       body[data-theme="light"] #account-select,
       body[data-theme="light"] #find-input,
       body[data-theme="light"] #custom-name,
@@ -265,6 +271,35 @@
         flex-shrink: 0;
       }
       .tab.loading .spinner { display: block; }
+      .tab-gap {
+        width: 1px;
+        align-self: stretch;
+        margin: 14px 8px;
+        background: #3a3a3a;
+        flex-shrink: 0;
+      }
+      .tab.tab-local {
+        border: 1px dashed rgba(82, 199, 125, 0.55);
+        background: rgba(82, 199, 125, 0.08);
+        color: #b7ebc8;
+      }
+      .tab.tab-local.active {
+        border-style: solid;
+        background: rgba(82, 199, 125, 0.16);
+        color: #e9fff0;
+        box-shadow: inset 0 -2px 0 #3dbe78;
+      }
+      body[data-theme="light"] .tab-gap { background: #d5deea; }
+      body[data-theme="light"] .tab.tab-local {
+        border-color: rgba(22, 128, 72, 0.45);
+        background: rgba(22, 128, 72, 0.08);
+        color: #166534;
+      }
+      body[data-theme="light"] .tab.tab-local.active {
+        background: rgba(22, 128, 72, 0.14);
+        color: #14532d;
+        box-shadow: inset 0 -2px 0 #16804a;
+      }
       @keyframes spin { to { transform: rotate(360deg); } }
 
       /* ── VPN button ───────────────────────────────────────────── */
@@ -676,103 +711,63 @@
         left: 0;
         right: 0;
         top: 60px;
-        -webkit-app-region: no-drag;
-      }
-      #openclaw-panel.visible { display: block; }
-      #openclaw-panel.expanded {
         bottom: 0;
         overflow: auto;
         background: #1e1e1e;
+        -webkit-app-region: no-drag;
       }
-      #openclaw-bar {
-        height: 40px;
+      #openclaw-panel.visible { display: block; }
+      #oc-detail {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 72px 24px 32px;
+      }
+      .oc-kicker {
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #3dbe78;
+        margin-bottom: 8px;
+      }
+      #oc-detail h2 {
+        font-size: 28px;
+        font-weight: 650;
+        color: #f2f2f2;
+        margin-bottom: 10px;
+      }
+      #oc-explain {
+        font-size: 15px;
+        line-height: 1.5;
+        color: #b5b5b5;
+        margin-bottom: 22px;
+      }
+      .oc-actions {
         display: flex;
-        align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
-        padding: 0 12px 0 16px;
-        background: #1a1a1a;
-        border-bottom: 1px solid #333;
+        margin-top: 8px;
       }
-      #oc-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #3a3a3a;
-        flex-shrink: 0;
-      }
-      #oc-dot.on { background: #52c77d; box-shadow: 0 0 5px rgba(82,199,125,0.5); }
-      #oc-dot.wait { background: #e09a3a; }
-      #oc-status {
-        font-size: 12px;
-        color: #ddd;
-        white-space: nowrap;
-      }
-      #oc-url {
-        font-size: 12px;
-        color: #8d8d8d;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
-      }
-      .oc-spacer { flex: 1; }
       .oc-btn {
-        flex-shrink: 0;
-        font-size: 12px;
+        font-size: 13px;
         font-family: inherit;
-        padding: 4px 10px;
-        border-radius: 7px;
+        padding: 8px 14px;
+        border-radius: 8px;
         border: 1px solid #3a3a3a;
         background: #242424;
-        color: #ddd;
+        color: #eee;
         cursor: pointer;
       }
       .oc-btn:hover { background: #2e2e2e; }
       .oc-btn:disabled { opacity: 0.45; cursor: default; }
       .oc-btn.primary {
-        border-color: rgba(124,106,255,0.45);
-        background: rgba(124,106,255,0.16);
-        color: #d5d0ff;
-      }
-      #oc-detail {
-        max-width: 640px;
-        margin: 0 auto;
-        padding: 42px 24px 28px;
-      }
-      #oc-detail h2 {
-        font-size: 22px;
-        font-weight: 650;
-        color: #f2f2f2;
-        margin-bottom: 6px;
-      }
-      .oc-sub, #oc-explain {
-        font-size: 13px;
-        line-height: 1.45;
-        color: #9a9a9a;
-      }
-      .oc-sub { margin-bottom: 14px; }
-      #oc-explain { margin-bottom: 16px; }
-      #oc-install-wrap label {
-        display: block;
-        font-size: 11px;
-        color: #777;
-        margin-bottom: 6px;
-      }
-      #oc-install {
-        width: 100%;
-        margin-bottom: 8px;
-        padding: 8px 10px;
-        border-radius: 7px;
-        border: 1px solid #333;
-        background: #141414;
-        color: #e8e8e8;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 12px;
+        border-color: rgba(61, 190, 120, 0.7);
+        background: rgba(61, 190, 120, 0.18);
+        color: #d8ffe6;
       }
       #oc-log {
-        margin-top: 14px;
+        margin-top: 18px;
         padding: 10px 12px;
-        border-radius: 7px;
+        border-radius: 8px;
         background: rgba(220,70,70,0.08);
         color: #e07070;
         font-size: 12px;
@@ -785,26 +780,18 @@
         -webkit-user-select: text;
       }
       #oc-log:empty { display: none; }
-      body[data-theme="light"] #openclaw-panel.expanded { background: #f3f5f9; }
-      body[data-theme="light"] #openclaw-bar {
-        background: #ffffff;
-        border-bottom-color: #d8deea;
-      }
+      body[data-theme="light"] #openclaw-panel { background: #f3f5f9; }
       body[data-theme="light"] #oc-detail h2 { color: #101828; }
-      body[data-theme="light"] #oc-status { color: #101828; }
-      body[data-theme="light"] #oc-url,
-      body[data-theme="light"] .oc-sub,
-      body[data-theme="light"] #oc-explain,
-      body[data-theme="light"] #oc-install-wrap label { color: #516074; }
+      body[data-theme="light"] #oc-explain { color: #516074; }
       body[data-theme="light"] .oc-btn {
-        background: #f8fafc;
+        background: #ffffff;
         border-color: #d7deea;
         color: #1f2937;
       }
-      body[data-theme="light"] #oc-install {
-        background: #ffffff;
-        border-color: #d7deea;
-        color: #111827;
+      body[data-theme="light"] .oc-btn.primary {
+        background: rgba(22, 128, 72, 0.12);
+        border-color: rgba(22, 128, 72, 0.45);
+        color: #14532d;
       }
       body[data-theme="light"] #oc-log { color: #b42318; background: rgba(180,35,24,0.06); }
     </style>
@@ -857,28 +844,23 @@
       <button type="button" id="compare-close">Back</button>
     </div>
     <div id="update-bar" hidden>
-      <span id="update-text">An update is available.</span>
+      <span id="update-text">A newer AI Hub is ready.</span>
       <button type="button" id="update-action">Download</button>
+    </div>
+    <div id="oc-update-bar" hidden>
+      <span id="oc-update-text">A newer OpenClaw is ready.</span>
+      <button type="button" id="oc-update-action">Update</button>
     </div>
 
     <div id="openclaw-panel">
-      <div id="openclaw-bar">
-        <span id="oc-dot"></span>
-        <span id="oc-status">OpenClaw</span>
-        <span id="oc-url"></span>
-        <span class="oc-spacer"></span>
-        <button type="button" class="oc-btn" id="oc-refresh" onclick="refreshOpenClaw()">Refresh</button>
-        <button type="button" class="oc-btn" id="oc-start" onclick="startOpenClaw()" hidden>Start gateway</button>
-        <button type="button" class="oc-btn primary" id="oc-dashboard" onclick="openOpenClawDashboard()" hidden>Open dashboard</button>
-      </div>
       <div id="oc-detail">
-        <h2>OpenClaw</h2>
-        <p class="oc-sub">Local personal assistant, formerly Clawd, Clawdbot, and Moltbot.</p>
-        <p id="oc-explain"></p>
-        <div id="oc-install-wrap" hidden>
-          <label for="oc-install">Official install command</label>
-          <input id="oc-install" type="text" readonly value="curl -fsSL https://openclaw.ai/install.sh | bash">
-          <button type="button" class="oc-btn" id="oc-copy" onclick="copyOpenClawInstall()">Copy</button>
+        <p class="oc-kicker">On this computer</p>
+        <h2 id="oc-title">OpenClaw</h2>
+        <p id="oc-explain">Looking for OpenClaw on this Mac.</p>
+        <div class="oc-actions">
+          <button type="button" class="oc-btn primary" id="oc-install" onclick="installOpenClaw()" hidden>Install OpenClaw</button>
+          <button type="button" class="oc-btn primary" id="oc-start" onclick="startOpenClaw()" hidden>Open OpenClaw</button>
+          <button type="button" class="oc-btn" id="oc-refresh" onclick="refreshOpenClaw()">Check again</button>
         </div>
         <pre id="oc-log"></pre>
       </div>
@@ -926,7 +908,7 @@
       </div>
 
       <div class="p-wg on" id="p-services-wrap">
-        <p class="p-wg-note">Each service can use the tunnel or a direct connection. Hidden services stay out of the tab bar. OpenClaw starts hidden.</p>
+        <p class="p-wg-note">Each service can use the tunnel or a direct connection. Uncheck a service to hide its tab.</p>
         <div id="p-services"></div>
         <p class="p-wg-note">Add a site</p>
         <input id="custom-name" type="text" placeholder="Name" aria-label="Service name">
@@ -972,6 +954,7 @@
       function applyTheme(preference) {
         themePreference = THEME_ORDER.includes(preference) ? preference : 'dark';
         const theme = resolvedTheme();
+        document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.body.dataset.theme = theme;
         localStorage.setItem('aihub-theme', themePreference);
@@ -1181,11 +1164,10 @@
 
       function shellInsetHeight() {
         let height = 60;
-        ['tunnel-dropped', 'find-bar', 'compare-bar', 'update-bar'].forEach((id) => {
+        ['tunnel-dropped', 'find-bar', 'compare-bar', 'update-bar', 'oc-update-bar'].forEach((id) => {
           const bar = document.getElementById(id);
           if (bar && !bar.hidden) height += bar.offsetHeight || 34;
         });
-        if (activeTabName === 'OpenClaw' && openclawGatewayUp) height += 40;
         if (panelOpen) {
           const panel = document.getElementById('vpn-panel');
           height += (panel ? panel.offsetHeight : 0) + 6;
@@ -1757,13 +1739,13 @@
 
       function hideOpenClawPanel() {
         const panel = document.getElementById('openclaw-panel');
-        if (panel) panel.classList.remove('visible', 'expanded');
+        if (panel) panel.classList.remove('visible');
         layoutInset();
       }
 
       function setOpenClawBusy(busy) {
         openclawBusy = busy;
-        ['oc-refresh', 'oc-start', 'oc-dashboard', 'oc-copy'].forEach(id => {
+        ['oc-refresh', 'oc-start', 'oc-install'].forEach(id => {
           const button = document.getElementById(id);
           if (button) button.disabled = busy;
         });
@@ -1778,46 +1760,44 @@
           return;
         }
         openclawGatewayUp = Boolean(status.gatewayUp);
-        panel.classList.add('visible');
-        panel.classList.toggle('expanded', !openclawGatewayUp);
-
-        const dot = document.getElementById('oc-dot');
-        dot.classList.toggle('on', openclawGatewayUp);
-        dot.classList.toggle('wait', status.phase === 'checking');
-
-        const statusEl = document.getElementById('oc-status');
-        if (status.phase === 'checking') statusEl.textContent = 'Checking OpenClaw…';
-        else if (!status.installed) statusEl.textContent = 'Not installed';
-        else if (openclawGatewayUp) statusEl.textContent = 'Installed · Gateway up';
-        else statusEl.textContent = 'Installed · Gateway down';
-        statusEl.title = logText || status.error || '';
-
-        document.getElementById('oc-url').textContent = status.url || '';
-
-        const detail = document.getElementById('oc-detail');
-        detail.hidden = openclawGatewayUp;
-        const explain = document.getElementById('oc-explain');
-        const installWrap = document.getElementById('oc-install-wrap');
-        if (status.phase === 'checking') {
-          explain.textContent = 'Checking whether the OpenClaw Gateway is running.';
-          installWrap.hidden = true;
-        } else if (!status.installed) {
-          explain.textContent = 'OpenClaw is not installed on this computer. The installer starts a local Gateway, and its chat UI is a normal web page. Run the official command in Terminal, then click Refresh. AI Hub will not run the installer for you.';
-          installWrap.hidden = false;
-        } else if (!openclawGatewayUp) {
-          explain.textContent = 'OpenClaw is installed, but the Gateway is not reachable. Start the background Gateway, then use Open dashboard so this window gets its own one-time pairing link.';
-          installWrap.hidden = true;
-        } else {
-          explain.textContent = '';
-          installWrap.hidden = true;
+        if (status.pageReady) {
+          hideOpenClawPanel();
+          return;
         }
-
-        document.getElementById('oc-start').hidden = status.installed !== true || openclawGatewayUp || status.phase === 'checking';
-        document.getElementById('oc-dashboard').hidden = !openclawGatewayUp;
-
+        panel.classList.add('visible');
+        const title = document.getElementById('oc-title');
+        const explain = document.getElementById('oc-explain');
+        const install = document.getElementById('oc-install');
+        const start = document.getElementById('oc-start');
+        if (status.gatewayUp) {
+          title.textContent = 'Opening OpenClaw';
+          explain.textContent = status.error || 'Opening its page on this Mac.';
+          install.hidden = true;
+          start.hidden = true;
+        } else if (status.phase === 'checking') {
+          title.textContent = 'OpenClaw';
+          explain.textContent = 'Looking for OpenClaw on this Mac.';
+          install.hidden = true;
+          start.hidden = true;
+        } else if (status.stopped) {
+          title.textContent = 'OpenClaw stopped';
+          explain.textContent = 'Its page lost the connection because OpenClaw is not running. Open it again.';
+          install.hidden = true;
+          start.hidden = false;
+        } else if (!status.installed) {
+          title.textContent = 'Install OpenClaw';
+          explain.textContent = 'This tab opens a page that runs on this Mac. Install it once, then it opens here.';
+          install.hidden = false;
+          start.hidden = true;
+        } else {
+          title.textContent = 'Open OpenClaw';
+          explain.textContent = 'OpenClaw is installed. Open it to show its web page in this tab.';
+          install.hidden = true;
+          start.hidden = false;
+        }
         const log = document.getElementById('oc-log');
-        const text = [!openclawGatewayUp ? status.error : '', logText || ''].filter(Boolean).join('\n\n');
-        log.textContent = text;
+        const detail = String(status.error || logText || "");
+        log.textContent = /\$ |openclaw |LaunchAgent/i.test(detail) ? "" : detail;
         layoutInset();
       }
 
@@ -1828,34 +1808,27 @@
           hideOpenClawPanel();
           return;
         }
-        const currentUrl = document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/';
-        if (openclawGatewayUp) {
-          const panel = document.getElementById('openclaw-panel');
-          panel.classList.add('visible');
-          panel.classList.remove('expanded');
-          document.getElementById('oc-detail').hidden = true;
-          document.getElementById('oc-dot').classList.add('wait');
-          document.getElementById('oc-status').textContent = 'Checking OpenClaw…';
-          layoutInset();
-        } else {
-          renderOpenClaw({
-            gatewayUp: false,
-            phase: 'checking',
-            url: currentUrl,
-          });
+        if (!openclawGatewayUp) {
+          renderOpenClaw({ gatewayUp: false, phase: 'checking' });
         }
         setOpenClawBusy(true);
         try {
           const status = await window.electronAPI.openclawStatus();
           if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          if (status && status.installed && !status.gatewayUp && !status.pageReady) {
+            renderOpenClaw({ ...status, stopped: true });
+            setOpenClawBusy(false);
+            await startOpenClaw();
+            return;
+          }
           renderOpenClaw(status);
+          if (status && status.pageReady) void checkOpenClawUpdate();
         } catch (err) {
           if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
           renderOpenClaw({
             installed: true,
             gatewayUp: false,
             phase: 'stopped',
-            url: 'http://127.0.0.1:18789/',
             error: err.message || 'Could not check OpenClaw',
           });
         } finally {
@@ -1868,7 +1841,7 @@
         const seq = ++openclawSeq;
         setOpenClawBusy(true);
         const button = document.getElementById('oc-start');
-        button.textContent = 'Starting…';
+        button.textContent = 'Opening…';
         try {
           const result = await window.electronAPI.openclawStart();
           if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
@@ -1877,21 +1850,18 @@
             installed: true,
             gatewayUp: false,
             phase: 'stopped',
-            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
-            error: (result && (result.error || result.log)) || 'Could not start the Gateway',
+            error: (result && result.error) || 'Could not open OpenClaw',
           });
         } catch (err) {
           if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
           renderOpenClaw({
             installed: true,
-            serviceInstalled: true,
             gatewayUp: false,
             phase: 'stopped',
-            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
-            error: err.message || 'Could not start the Gateway',
+            error: err.message || 'Could not open OpenClaw',
           });
         } finally {
-          button.textContent = 'Start gateway';
+          button.textContent = 'Open OpenClaw';
           if (seq === openclawSeq) setOpenClawBusy(false);
         }
       }
@@ -1900,18 +1870,15 @@
         if (openclawBusy || !window.electronAPI.openclawDashboard) return;
         const seq = ++openclawSeq;
         setOpenClawBusy(true);
-        const button = document.getElementById('oc-dashboard');
-        button.textContent = 'Opening…';
         try {
           const result = await window.electronAPI.openclawDashboard();
           if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
           if (!result || !result.success) {
             renderOpenClaw({
               installed: true,
-              gatewayUp: openclawGatewayUp,
-              phase: openclawGatewayUp ? 'running' : 'stopped',
-              url: (result && result.url) || document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
-              error: (result && result.error) || 'Could not open the dashboard',
+              gatewayUp: false,
+              phase: 'stopped',
+              error: (result && result.error) || 'Could not open the page',
             });
             return;
           }
@@ -1919,7 +1886,6 @@
             installed: true,
             gatewayUp: true,
             phase: 'running',
-            url: result.url || document.getElementById('oc-url').textContent,
             error: null,
           }, result.error || '');
         } catch (err) {
@@ -1928,31 +1894,52 @@
             installed: true,
             gatewayUp: openclawGatewayUp,
             phase: openclawGatewayUp ? 'running' : 'stopped',
-            url: document.getElementById('oc-url').textContent || 'http://127.0.0.1:18789/',
-            error: err.message || 'Could not open the dashboard',
+            error: err.message || 'Could not open the page',
           });
         } finally {
-          button.textContent = 'Open dashboard';
           if (seq === openclawSeq) setOpenClawBusy(false);
         }
       }
 
-      function copyOpenClawInstall() {
-        const input = document.getElementById('oc-install');
-        const button = document.getElementById('oc-copy');
-        const text = input ? input.value : '';
-        const area = document.createElement('textarea');
-        area.value = text;
-        area.style.position = 'fixed';
-        area.style.left = '-9999px';
-        document.body.appendChild(area);
-        area.select();
-        try { document.execCommand('copy'); } catch {}
-        area.remove();
-        if (button) {
-          button.textContent = 'Copied';
-          setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+      async function installOpenClaw() {
+        if (openclawBusy || !window.electronAPI.openclawInstall) return;
+        const seq = ++openclawSeq;
+        setOpenClawBusy(true);
+        const button = document.getElementById('oc-install');
+        if (button) button.textContent = 'Installing…';
+        try {
+          const result = await window.electronAPI.openclawInstall();
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          if (result && result.status) renderOpenClaw(result.status);
+          else renderOpenClaw({
+            installed: false,
+            gatewayUp: false,
+            phase: 'missing',
+            error: (result && result.error) || 'OpenClaw could not be installed.',
+          });
+        } catch (err) {
+          if (seq !== openclawSeq || activeTabName !== 'OpenClaw') return;
+          renderOpenClaw({
+            installed: false,
+            gatewayUp: false,
+            phase: 'missing',
+            error: 'OpenClaw could not be installed.',
+          });
+        } finally {
+          if (button) button.textContent = 'Install OpenClaw';
+          if (seq === openclawSeq) setOpenClawBusy(false);
         }
+      }
+
+      if (window.electronAPI.onOpenClawPage) {
+        window.electronAPI.onOpenClawPage((info) => {
+          if (activeTabName !== 'OpenClaw') return;
+          if (info && info.ready) {
+            openclawGatewayUp = true;
+            hideOpenClawPanel();
+            void checkOpenClawUpdate();
+          }
+        });
       }
 
       if (window.electronAPI.onOpenClawDown) {
@@ -1989,27 +1976,38 @@
         return (serviceState.services || []).filter((item) => !item.hidden);
       }
 
+      function appendServiceTab(root, service, local) {
+        const tab = document.createElement("div");
+        tab.className = local ? "tab tab-local" : "tab";
+        tab.dataset.name = service.id;
+        if (service.id === activeTabName) tab.classList.add("active");
+        tab.title = local ? "OpenClaw, on this computer" : service.name;
+        const icon = document.createElement("span");
+        icon.textContent = TAB_ICONS[service.id] || "🌐";
+        const label = document.createElement("span");
+        label.textContent = service.name;
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        tab.append(icon, label, spinner);
+        tab.addEventListener("click", () => switchTab(service.id));
+        root.appendChild(tab);
+      }
+
       function renderServiceTabs() {
         const root = document.getElementById("tabs");
         if (!root) return;
-        const active = activeTabName;
+        const visible = visibleServices();
+        const remote = visible.filter((service) => service.id !== "OpenClaw");
+        const local = visible.filter((service) => service.id === "OpenClaw");
         root.textContent = "";
-        visibleServices().forEach((service) => {
-          const tab = document.createElement("div");
-          tab.className = "tab";
-          tab.dataset.name = service.id;
-          if (service.id === active) tab.classList.add("active");
-          tab.title = service.name;
-          const icon = document.createElement("span");
-          icon.textContent = TAB_ICONS[service.id] || "🌐";
-          const label = document.createElement("span");
-          label.textContent = service.name;
-          const spinner = document.createElement("span");
-          spinner.className = "spinner";
-          tab.append(icon, label, spinner);
-          tab.addEventListener("click", () => switchTab(service.id));
-          root.appendChild(tab);
-        });
+        remote.forEach((service) => appendServiceTab(root, service, false));
+        if (remote.length && local.length) {
+          const gap = document.createElement("div");
+          gap.className = "tab-gap";
+          gap.setAttribute("aria-hidden", "true");
+          root.appendChild(gap);
+        }
+        local.forEach((service) => appendServiceTab(root, service, true));
         renderAccountSwitch();
       }
 
@@ -2021,7 +2019,7 @@
         const wrap = document.getElementById("account-switch");
         const select = document.getElementById("account-select");
         const service = activeServiceRecord();
-        if (!wrap || !select || !service) {
+        if (!wrap || !select || !service || service.id === "OpenClaw") {
           if (wrap) wrap.hidden = true;
           return;
         }
@@ -2218,17 +2216,58 @@
         });
       }
 
+      async function checkOpenClawUpdate() {
+        if (!window.electronAPI.openclawUpdateStatus) return;
+        const status = await window.electronAPI.openclawUpdateStatus();
+        const bar = document.getElementById("oc-update-bar");
+        const text = document.getElementById("oc-update-text");
+        if (!bar || !text) return;
+        if (!status || !status.available || activeTabName !== "OpenClaw") {
+          bar.hidden = true;
+          layoutInset();
+          return;
+        }
+        text.textContent = "OpenClaw " + (status.version || "") + " is ready.";
+        bar.hidden = false;
+        layoutInset();
+      }
+
+      async function runOpenClawUpdate() {
+        const bar = document.getElementById("oc-update-bar");
+        const text = document.getElementById("oc-update-text");
+        const action = document.getElementById("oc-update-action");
+        if (!bar || !text || !action || !window.electronAPI.openclawUpdate) return;
+        action.disabled = true;
+        text.textContent = "Updating OpenClaw…";
+        try {
+          const result = await window.electronAPI.openclawUpdate();
+          if (!result || !result.success) {
+            text.textContent = (result && result.error) || "OpenClaw could not be updated.";
+            action.disabled = false;
+            return;
+          }
+          bar.hidden = true;
+          layoutInset();
+        } catch (err) {
+          text.textContent = "OpenClaw could not be updated.";
+          action.disabled = false;
+        }
+      }
+
       function initUpdates() {
         if (!window.electronAPI.onUpdateAvailable) return;
         const text = document.getElementById("update-text");
         const action = document.getElementById("update-action");
         window.electronAPI.onUpdateAvailable((info) => {
-          if (text) text.textContent = "Update " + ((info && info.version) || "") + " is ready to download.";
-          if (action) action.textContent = "Download";
+          if (text) text.textContent = "AI Hub " + ((info && info.version) || "") + " is ready.";
+          if (action) {
+            action.textContent = "Download";
+            action.dataset.mode = "download";
+          }
           setBar("update-bar", true);
         });
         window.electronAPI.onUpdateDownloaded(() => {
-          if (text) text.textContent = "Update downloaded. Restart to install it.";
+          if (text) text.textContent = "AI Hub is downloaded. Restart to install it.";
           if (action) action.textContent = "Restart";
           action.dataset.mode = "install";
           setBar("update-bar", true);
@@ -2239,6 +2278,26 @@
         });
       }
 
+      function initWindowDrag() {
+        const toolbar = document.getElementById("toolbar");
+        if (!toolbar || !window.electronAPI.moveWindowBy) return;
+        let drag = null;
+        toolbar.addEventListener("mousedown", (event) => {
+          if (event.button !== 0) return;
+          const target = event.target;
+          if (target && target.closest && target.closest("button, a, input, select, .tab, #account-switch, #vpn-area")) return;
+          drag = { x: event.screenX, y: event.screenY };
+        });
+        window.addEventListener("mousemove", (event) => {
+          if (!drag) return;
+          const dx = event.screenX - drag.x;
+          const dy = event.screenY - drag.y;
+          drag = { x: event.screenX, y: event.screenY };
+          window.electronAPI.moveWindowBy(dx, dy);
+        });
+        window.addEventListener("mouseup", () => { drag = null; });
+      }
+
       applyTheme(themePreference);
       refreshExtensions();
       initWireguard();
@@ -2246,6 +2305,9 @@
       initFind();
       initCompare();
       initUpdates();
+      initWindowDrag();
+      const ocUpdate = document.getElementById("oc-update-action");
+      if (ocUpdate) ocUpdate.addEventListener("click", () => { void runOpenClawUpdate(); });
       layoutInset();
     </script>
     <script src="board.js"></script>
