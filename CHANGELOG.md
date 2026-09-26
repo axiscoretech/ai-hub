@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0 Emergency
+
+- Service tabs show each site's favicon. A site you add yourself uses its own icon, or the first letter of its name when it has none.
+- The README opens on a short clip: dark theme, signed in, tabs that stay loaded, and the WireGuard flag changing country.
+- Compare states the principle that AI Hub does not send a prompt into the sites for you.
+
 ## 1.6.0
 
 - macOS no longer asks for the login password twice when the app opens. Site sessions stay in the app, and a saved tunnel uses the keychain once.
