@@ -105,6 +105,7 @@ function buildViewPreferences(name) {
     partition: partitionForTab(name),
     contextIsolation: true,
     nodeIntegration: false,
+    sandbox: true,
     spellcheck: true,
   };
 }
@@ -871,6 +872,7 @@ function createWindow() {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     }
   });
 
@@ -2273,6 +2275,7 @@ function openGoogleChooser(partition) {
       partition,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   googleWindow = popup;

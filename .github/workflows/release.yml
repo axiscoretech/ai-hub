@@ -28,6 +28,9 @@ jobs:
       - name: Compile
         run: npm run build
 
+      - name: Test
+        run: npm test
+
       - name: Detect signing secrets
         id: signing
         env:
@@ -158,6 +161,9 @@ jobs:
       - name: Compile
         run: npm run build
 
+      - name: Test
+        run: npm test
+
       - name: Build and publish Windows release
         run: npx electron-builder --win --x64 --publish always
         env:
@@ -183,6 +189,14 @@ jobs:
 
       - name: Compile
         run: npm run build
+
+      - name: Install Linux libraries for Electron
+        run: |
+          sudo npx playwright install-deps chromium
+          sudo apt-get install -y xvfb
+
+      - name: Test
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm test
 
       - name: Build and publish Linux AppImage
         run: npx electron-builder --linux AppImage --x64 --arm64 --publish always
