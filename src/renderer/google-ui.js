@@ -1,4 +1,5 @@
 (function () {
+  /** @type {any} */
   let state = { signedIn: false, email: "", profiles: [] };
 
   function panel() {

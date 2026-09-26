@@ -194,7 +194,8 @@ function createTasks(options = {}) {
       try {
         return await task();
       } catch (err) {
-        return fail(err && err.message ? err.message : "Couldn't update tasks");
+        const message = err instanceof Error ? err.message : "";
+        return fail(message || "Couldn't update tasks");
       }
     });
     chain = run.then(() => undefined, () => undefined);
@@ -343,7 +344,7 @@ function createTasks(options = {}) {
       const prompt = sanitizePrompt(body.prompt);
       if (!prompt.ok) return fail(prompt.error);
       const services = normalizeServiceList(body.services);
-      if (!services.ok) return fail(services.error);
+      if (!services.ok || !services.services) return fail(services.error || "Choose at least one service");
       if (tasks.length >= MAX_TASKS) return fail("You can keep up to 50 tasks");
       const stamp = nowIso();
       tasks.push({

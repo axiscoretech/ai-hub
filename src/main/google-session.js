@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require("fs");
 const path = require("path");
 const { app, BrowserWindow, session } = require("electron");
@@ -231,10 +232,11 @@ function createGoogleSession(options = {}) {
       },
     });
     googleWindow = popup;
-    popup.sharedGoogle = partition === GOOGLE_PARTITION;
+    const googlePopup = /** @type {any} */ (popup);
+    googlePopup.sharedGoogle = partition === GOOGLE_PARTITION;
     if (proxy.current()) applyWebRTCPolicyToContents(popup.webContents, "tunnel");
     const note = () => {
-      const follow = popup.sharedGoogle ? rememberGoogleEmail(popup.webContents) : Promise.resolve();
+      const follow = googlePopup.sharedGoogle ? rememberGoogleEmail(popup.webContents) : Promise.resolve();
       void follow.then(() => publishGoogle());
     };
     popup.webContents.on("did-navigate", (_event, url) => {

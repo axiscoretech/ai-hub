@@ -12,6 +12,7 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-runtime.js",
     "start": "npm run build && electron .",
     "test": "npm run build && node --test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "open-app": "node scripts/open-local-app.js",
     "verify:extensions": "electron scripts/verify-extensions.js",
     "dist": "npm run build && electron-builder --mac --x64 --arm64 --publish never",

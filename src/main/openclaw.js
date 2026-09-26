@@ -23,6 +23,7 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const controlPorts = new Set([DEFAULT_PORT]);
 let chain = Promise.resolve();
 
+/** @template T @param {() => (T | Promise<T>)} task @returns {Promise<T>} */
 function enqueue(task) {
   const run = chain.then(task, task);
   chain = run.then(() => undefined, () => undefined);
@@ -388,7 +389,7 @@ function downloadInstaller(url, dest, redirectsLeft) {
       const file = fs.createWriteStream(dest, { mode: 0o600 });
       response.pipe(file);
       file.on("error", reject);
-      file.on("finish", () => file.close(() => resolve()));
+      file.on("finish", () => file.close(() => resolve(undefined)));
     });
     request.on("error", reject);
   });

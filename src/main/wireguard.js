@@ -379,7 +379,7 @@ function waitForLocalPort(port, readFailure) {
       socket.once("connect", () => {
         clearTimeout(timer);
         socket.end();
-        resolve();
+        resolve(undefined);
       });
       socket.once("error", () => {
         clearTimeout(timer);
@@ -663,9 +663,11 @@ function createWireguard(options) {
 
   function pickBinary(files) {
     const wanted = platform === "win32" ? "wireproxy.exe" : "wireproxy";
-    if (files.has(wanted)) return files.get(wanted);
+    const direct = files.get(wanted);
+    if (direct) return direct;
     for (const [name, data] of files) {
-      if (String(name).split("/").pop().toLowerCase() === wanted) return data;
+      const base = String(name).split("/").pop();
+      if (base && base.toLowerCase() === wanted) return data;
     }
     return null;
   }
@@ -676,6 +678,7 @@ function createWireguard(options) {
     if (!asset || !urls.length) {
       throw installError(`no official build for ${platform} ${arch}`);
     }
+    /** @type {any} */
     let failure = null;
     for (const url of urls) {
       try {
@@ -722,7 +725,7 @@ function createWireguard(options) {
       const proc = activeChild;
       activeChild = null;
       if (!proc || proc.exitCode !== null) {
-        resolve();
+        resolve(undefined);
         return;
       }
       let settled = false;
@@ -733,7 +736,7 @@ function createWireguard(options) {
         settled = true;
         clearTimeout(killTimer);
         clearTimeout(doneTimer);
-        resolve();
+        resolve(undefined);
       };
       proc.once("exit", finish);
       try {
@@ -987,6 +990,7 @@ function createWireguard(options) {
     return enqueue(async () => {
       load();
       const { dialog } = require("electron");
+      /** @type {import("electron").OpenDialogOptions} */
       const dialogOptions = {
         title: "Import WireGuard configs",
         filters: [{ name: "WireGuard config", extensions: ["conf"] }],

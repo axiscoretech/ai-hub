@@ -1,3 +1,4 @@
+// @ts-check
 const { BrowserWindow, nativeTheme, ipcMain } = require("electron");
 
 const THEME_COLORS = {
@@ -11,12 +12,14 @@ function createTheme(options = {}) {
   const getParked = options.parkedViews || (() => new Map());
   const getCompareSlots = options.compareSlots || (() => []);
   const isViewUsable = options.isViewUsable || (() => false);
+  /** @type {"dark" | "light" | "system"} */
   let contentTheme = "dark";
 
   // Tab pages live outside the shell document. Point Chromium's
   // prefers-color-scheme at the hub theme before any of those pages load.
   nativeTheme.themeSource = contentTheme;
 
+  /** @returns {"dark" | "light" | "system"} */
   function normalizeTheme(theme) {
     if (theme === "light" || theme === "dark" || theme === "system") return theme;
     return "dark";

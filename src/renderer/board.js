@@ -308,7 +308,7 @@
   }
 
   function selectedServices() {
-    return [...document.querySelectorAll("#board-services input:checked")].map((input) => input.value);
+    return Array.from(document.querySelectorAll("#board-services input:checked")).map((input) => input.value);
   }
 
   function bind() {

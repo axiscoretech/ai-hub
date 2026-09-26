@@ -1,3 +1,4 @@
+// @ts-check
 // Host, OAuth, and popup rules for service tabs.
 // A link stays in the app when it is the service itself or an identity provider.
 // Everything else opens in the system browser.

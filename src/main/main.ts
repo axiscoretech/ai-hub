@@ -43,11 +43,11 @@ const { registerMainIpc } = require("./ipc-handlers");
 
 let win;
 let views: Record<string, any> = {};
-let activeTab = null;
+let activeTab: string | null = null;
 let topBarHeight = 60;
 let tabState = {};
 let popupWindows = new Set<any>();
-let openclawSnapshot = null;
+let openclawSnapshot: any = null;
 let openclawAuthedUrl = "";
 let openclawAuthPromise = null;
 let openclawPresentPromise = null;
@@ -165,7 +165,7 @@ function rememberTabUrl(name, url) {
 const parkedViews = new Map<string, any>();
 const hookedPartitions = new Set();
 let compareOpen = false;
-let compareSlots = [];
+let compareSlots: any[] = [];
 let compareFocus = null;
 let compareTaskId = null;
 let registeredHotkey = "";
@@ -553,7 +553,7 @@ async function withRebuiltViews(action) {
 }
 
 function reloadActiveTab(ignoreCache = false) {
-  const view = views[activeTab];
+  const view = activeTab ? views[activeTab] : null;
   if (!isViewUsable(view)) return;
 
   if (ignoreCache) view.webContents.reloadIgnoringCache();
@@ -875,7 +875,7 @@ function resizeView(view) {
     width,
     height: Math.max(0, height - topBarHeight),
   };
-  let current = null;
+  let current: any = null;
   try { current = view.getBounds(); } catch {}
   if (current
     && current.x === bounds.x

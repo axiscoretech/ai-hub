@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -195,7 +196,8 @@ function createExtensions(options = {}) {
       const mod = url.startsWith("https") ? https : http;
       const file = fs.createWriteStream(dest);
       const req = mod.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const statusCode = res.statusCode || 0;
+        if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
           file.close();
           fs.unlink(dest, () => {});
           downloadFile(res.headers.location, dest, redirects + 1).then(resolve).catch(reject);

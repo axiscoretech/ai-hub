@@ -79,7 +79,8 @@ function freshService(builtin, order) {
 function createServices(options = {}) {
   const getUserDataPath = options.getUserDataPath;
   const broadcast = options.broadcast || (() => {});
-  const openclawUrl = sanitizeHttpsUrl(options.openclawUrl) || options.openclawUrl || BUILTINS.find((item) => item.id === OPENCLAW_ID).url;
+  const openClawBuiltin = BUILTINS.find((item) => item.id === OPENCLAW_ID);
+  const openclawUrl = sanitizeHttpsUrl(options.openclawUrl) || options.openclawUrl || (openClawBuiltin && openClawBuiltin.url) || "";
 
   let services = [];
   let hotkey = DEFAULT_HOTKEY;

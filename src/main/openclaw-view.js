@@ -1,3 +1,4 @@
+// @ts-check
 const { session } = require("electron");
 const { handle } = require("./ipc-bind");
 const {
@@ -125,7 +126,7 @@ function createOpenClawView(options = {}) {
   function loadOpenClawAuth() {
     if (state.openclawAuthedUrl) return Promise.resolve(state.openclawAuthedUrl);
     if (!state.openclawAuthPromise) {
-      state.openclawAuthPromise = openClawDashboard().then((page) => {
+      state.openclawAuthPromise = openClawDashboard().then((/** @type {any} */ page) => {
         state.openclawAuthPromise = null;
         if (page && page.authed && openClawUrlHasToken(page.url)) {
           state.openclawAuthedUrl = page.url;

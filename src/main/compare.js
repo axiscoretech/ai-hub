@@ -1,3 +1,4 @@
+// @ts-check
 const { globalShortcut, clipboard } = require("electron");
 const { handle } = require("./ipc-bind");
 
