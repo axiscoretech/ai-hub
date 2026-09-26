@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 - Each account has its own tunnel or direct route. Changing the route of an account that already has a site session warns that it will see a country change.
 - A shared Google sign-in applies only to the profiles you choose. Extra accounts start with their own sign-in.
