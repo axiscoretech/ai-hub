@@ -23,8 +23,8 @@
     "release:win": "npm run build && electron-builder --win --x64 --publish always"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "axiscoretech",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@electron/notarize": "^3.1.0",
@@ -37,7 +37,7 @@
   "build": {
     "appId": "com.aihub.desktop",
     "productName": "AI Hub",
-    "copyright": "Copyright © 2026",
+    "copyright": "Copyright © 2026 axiscoretech",
     "directories": {
       "output": "dist",
       "buildResources": "assets"
