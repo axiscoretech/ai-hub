@@ -76,7 +76,13 @@ jobs:
 
       - name: Build and publish signed release
         if: steps.signing.outputs.enabled == 'true'
-        run: npm run release
+        run: |
+          npm run build
+          npx electron-builder --mac --x64 --publish always
+          cp dist/latest-mac.yml "$RUNNER_TEMP/latest-mac-x64.yml"
+          npx electron-builder --mac --arm64 --publish always
+          node scripts/merge-mac-update-yml.js "$RUNNER_TEMP/latest-mac-x64.yml" dist/latest-mac.yml dist/latest-mac.yml
+          gh release upload "${GITHUB_REF_NAME}" dist/latest-mac.yml --repo "${GITHUB_REPOSITORY}" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -88,7 +94,10 @@ jobs:
         if: steps.signing.outputs.enabled != 'true'
         run: |
           npx electron-builder --mac --x64 --publish always -c.mac.identity=null
+          cp dist/latest-mac.yml "$RUNNER_TEMP/latest-mac-x64.yml"
           npx electron-builder --mac --arm64 --publish always -c.mac.identity=null
+          node scripts/merge-mac-update-yml.js "$RUNNER_TEMP/latest-mac-x64.yml" dist/latest-mac.yml dist/latest-mac.yml
+          gh release upload "${GITHUB_REF_NAME}" dist/latest-mac.yml --repo "${GITHUB_REPOSITORY}" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
