@@ -1,10 +1,14 @@
 <div align="center">
 
-<img src="assets/icon.png" width="120" alt="AI Hub icon" />
+**Русский** · [English](README.en.md)
+
+<img src="assets/icon.png" width="120" alt="Значок AI Hub" />
 
 # AI Hub
 
-**Separate sessions, a tunnel only for the hub tabs you choose, and you send every message yourself.**
+**Все ваши чаты с ИИ в одном окне — на их бесплатных тарифах.**
+
+Без API-ключей. Без покупки токенов. Свой WireGuard только для вкладок хаба.
 
 ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · OpenClaw
 
@@ -16,208 +20,70 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
-![AI Hub switching signed-in tabs](assets/demo.gif)
+![AI Hub переключает вкладки со входом](assets/demo.gif)
 
-*Dark theme, signed in. Switching tabs does not reload the page. The flag changes with the WireGuard exit country.*
-
----
-
-A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Each account has its own login and its own choice of tunnel or direct connection. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites.
+*Тёмная тема, вход выполнен. Переключение вкладок не перезагружает страницу. Флаг меняется вместе со страной выхода WireGuard.*
 
 ---
 
-## Features
+Приложение для macOS, Windows и Linux, которое держит ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi и локальный шлюз [OpenClaw](https://openclaw.ai) в одном окне.
 
-- **Separate from your browser** — AI chats get their own dock icon and window
-- **Isolated sessions** — stay logged in to every service at once. A service can hold more than one account, each with its own login and its own tunnel or direct route
-- **Live tabs** — switching services does not reload the page
-- **Compare** — put two or three chats side by side, insert the task text into the focused chat without sending it, and keep the task board
-- **WireGuard** — send the hub tabs you choose through a WireGuard config. Other services can stay on a direct connection. This does not change the rest of your Mac, PC, or Linux machine
-- **Your own sites** — add an https address when a service is missing from the list. Hide a tab from the flag panel when you do not want it
-- **Theme** — dark, light, or match the system
-- **OpenClaw** — a tab for a local OpenClaw gateway. Installing or updating it asks first and uses the official source
+AI Hub открывает настоящие сайты, поэтому каждым сервисом вы пользуетесь так, как он доступен всем: бесплатный тариф, без API-ключа и без оплаты за токены. Когда у одного сервиса кончается бесплатный лимит, переключаетесь на следующую вкладку и продолжаете. Каждая вкладка уже со входом и остаётся там, где вы её оставили. Платные аккаунты работают так же: вошли, и вкладка использует вашу подписку.
 
-The app opens the real websites. It does not sell credits, and it does not send a prompt into those sites for you.
+## Зачем AI Hub
+
+- **Сначала бесплатные тарифы.** Другие приложения для нескольких чатов просят API-ключи и предоплату. AI Hub не просит ни того ни другого: это тот веб-чат, которым вы уже пользуетесь, а не перепродажа токенов
+- **Без россыпи вкладок.** Одна живая вкладка на сервис, своё окно и своя иконка в Dock, а не десяток вкладок браузера, которые выходят из аккаунта и перезагружаются
+- **WireGuard только для хаба.** Если сервис недоступен в вашем регионе, вкладки с ИИ идут через ваш конфиг WireGuard. Браузер, банковские приложения и остальная система остаются на прямом соединении
 
 ---
 
-## Privacy
+## Возможности
 
-AI Hub does not send telemetry. It talks to the sites you open, to GitHub when it downloads `wireproxy`, and to GitHub Releases when it checks for an app update. A downloaded update is offered for install only after its SHA-256 matches the `SHA256SUMS` file published with that release. macOS still asks Gatekeeper to approve an update until the app is notarized.
+- **Отдельно от браузера** — чаты получают свою иконку в Dock и своё окно
+- **Живые вкладки** — переключение сервиса не перезагружает страницу. Вход сохраняется между запусками
+- **Отдельные сессии** — можно быть вошедшим во все сервисы сразу. У сервиса может быть больше одного аккаунта, например рабочий и личный. У каждого свой вход и свой туннель или прямое соединение
+- **Compare** — два или три чата рядом. Текст задачи вставляется в чат, на котором фокус, без отправки, и доска задач остаётся
+- **WireGuard** — выбранные вкладки хаба идут через конфиг WireGuard. Остальные сервисы могут остаться на прямом соединении. Сеть остального Mac, PC или компьютера с Linux при этом не меняется
+- **Свои сайты** — добавьте адрес https, если сервиса нет в списке. Скройте вкладку в панели флага, если она не нужна
+- **Тема** — тёмная, светлая или как в системе
+- **OpenClaw** — вкладка локального шлюза OpenClaw. Установка и обновление сначала спрашивают и берут официальный источник
 
-What stays on this computer, under the app's user data folder (`~/Library/Application Support/AI Hub` on macOS, `%APPDATA%\AI Hub` on Windows, `~/.config/AI Hub` on Linux):
-
-- **Logins.** Each account has its own session partition. The first account of a service is `Partitions/persist:<service>`. Another account is `Partitions/persist:<service>:<account>`. Cookies stay in that partition. On macOS they are not stored in the login keychain, so opening the app does not ask for that password twice. A saved WireGuard tunnel still uses the keychain once, when it reconnects.
-- **WireGuard configs.** Imported `.conf` files are encrypted with the operating system key store (Keychain on macOS, DPAPI on Windows, the desktop keyring on Linux) and stored in `wireguard/`. If encryption is not available, AI Hub refuses to save the config. A plaintext copy exists only while that tunnel is running, then it is deleted.
-- **Compare tasks.** `tasks.json`.
-- **Shared Google account book.** `google-accounts.json` records which profiles share one Google sign-in. Profiles left on their own are not in that group.
-- **OpenClaw sign-in.** The dashboard token is not written here. The app runs `openclaw dashboard --no-open`, reads the local URL from the pasteboard (the token is the URL fragment), keeps it in memory for that window, and restores the previous pasteboard text.
-- **Extensions.** `extensions/`.
-
----
-
-## The window
-
-The service names are tabs. The buttons on the right are icons:
-
-| Icon | Action |
-|------|--------|
-| Circular arrow | Reload the current page (`Cmd/Ctrl+R`) |
-| Circular arrow with a dot | Reload ignoring cache (`Cmd/Ctrl+Shift+R`) |
-| Moon, sun, or display | Theme. Click to cycle dark, light, and system |
-| Two columns | Compare (`Cmd/Ctrl+Shift+B`) |
-| Flag | WireGuard. After a connection finds its exit country, the flag becomes that country's flag |
-
-`Escape` leaves Compare and returns to the current chat.
+Приложение открывает настоящие сайты. Оно не продаёт кредиты и не отправляет текст на эти сайты за вас.
 
 ---
 
-## Compare
+## Установка
 
-![Compare board with two tasks](assets/screenshot-compare.png)
+### macOS — одна команда
 
-**Principle:** AI Hub does not send a prompt into the sites for you.
-
-Compare is a board in the shell, not a second account system.
-
-1. Click the two-column icon, or press `Cmd/Ctrl+Shift+B`.
-2. Enter a title and the text you want to paste into the chats.
-3. Tick the services you want on the task, then choose **Add task**.
-4. **Copy** puts the text on the clipboard. Paste it into the chat yourself.
-5. **Open** switches to that service. A queued assignment becomes **Doing**. If you already opened that chat from this task, AI Hub returns to the saved page.
-6. Set the status yourself: **Queued**, **Doing**, **Ready**, or **Done**.
-
-An amber dot means the background tab's title changed while that assignment was **Doing**. It is a nudge to look, not proof that the answer is finished. Opening the assignment, or changing its status, clears the dot.
-
-You can keep up to 50 tasks. Delete a task from its card. Removing the last service on a task is refused, so a task always points at somewhere.
-
-**Insert**, while the chats are side by side, focuses the message box of the chat you clicked and types the task text there. That includes the ProseMirror editors used by Claude and ChatGPT. It does not press Send.
-
----
-
-## WireGuard
-
-![WireGuard panel](assets/screenshot-wireguard.png)
-
-1. Click the flag.
-2. Choose **Import .conf** and pick one or more WireGuard config files.
-3. Choose **Connect** on the config you want. **Switch location** moves the tunnel accounts to another imported config.
-4. **Disconnect** returns those accounts to a direct connection.
-
-Only accounts set to Tunnel use it. The route is per account, so a work profile and a personal profile of the same service can exit in different countries. The rest of the system network stays as it is. Changing the route of an account that already has a site session warns that the account will see a country change.
-
-Tunnel accounts also block WebRTC UDP that would otherwise skip the proxy and reveal the real address. That block stays on if the tunnel drops and the account is cut off from the network. Accounts set to Direct keep normal WebRTC.
-
-The first time you connect, the app can download `wireproxy` if it is not already installed (`brew install wireproxy` installs it yourself). When the exit location is known, the flag icon shows that country.
-
-In the flag panel, each account has its own **Tunnel** or **Direct** choice. OpenClaw stays on this computer and has no tunnel choice.
-
----
-
-## Google
-
-The **G** button shares one Google sign-in only with the profiles you mark **Shared**. A profile marked **Own account** keeps a separate Google login. A new extra account starts as its own. **Sign in shared profiles** copies the shared Google session into the profiles in that group and leaves the others alone.
-
----
-
-## OpenClaw
-
-OpenClaw is the local personal assistant previously called Clawd, Clawdbot, and Moltbot.
-
-If OpenClaw is missing, **Install OpenClaw** asks before it downloads [https://openclaw.ai/install.sh](https://openclaw.ai/install.sh) and runs that script with `/bin/bash`. Nothing else is downloaded as the installer, and a redirect off `openclaw.ai` is refused. **Update** asks before it runs `openclaw update --yes --json --timeout 600` with the OpenClaw already on this computer.
-
-Signing in does not use a password typed into AI Hub. The app runs `openclaw dashboard --no-open`. OpenClaw copies a local dashboard URL to the pasteboard, and the sign-in token is that URL's fragment. AI Hub reads it, opens the page, restores the previous pasteboard text, and keeps the token in memory for the window. It is not written to the app's files.
-
-If the gateway is already running, the OpenClaw tab opens its dashboard. Pairing stays on that machine.
-
----
-
-## Quick Start
-
-### macOS — one command
-
-Latest release, into `/Applications`, then Launchpad. Apple Silicon and Intel are chosen for you.
+Последний релиз попадает в `/Applications`, затем в Launchpad. Apple Silicon и Intel выбираются сами.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
 ```
 
-The script installs the latest release into `/Applications` and opens it. A notarized build opens without an extra prompt. If the signature is not accepted, the script clears the quarantine flag once.
+Скрипт ставит последний релиз в `/Applications` и открывает его. Нотаризованная сборка открывается без лишнего запроса. Если подпись не принята, скрипт один раз снимает карантин.
 
-If macOS still blocks the app after this script, use the steps under the DMG download below.
+Если macOS всё равно блокирует приложение, шаги ниже, в разделе про DMG (образ диска).
+
+Настройка нотаризации для тех, кто выпускает сборки, — в [`docs/signing.md`](docs/signing.md).
 
 ### macOS — DMG
 
-1. Download the latest release from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
-2. Open the `.dmg`
-3. Drag **AI Hub.app** into `/Applications`
-4. Launch the app
+1. Скачайте последний релиз со страницы [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest): `AI-Hub-x.x.x-arm64.dmg` для Apple Silicon (M1–M4), `AI-Hub-x.x.x.dmg` для Intel
+2. Откройте `.dmg`
+3. Перетащите **AI Hub.app** в `/Applications`
+4. Запустите приложение
 
-Before you open the file, compare its SHA-256 with the digest GitHub shows next to that file on the release page. On a Mac: `shasum -a 256 ~/Downloads/AI-Hub-x.x.x.dmg` (Apple Silicon builds are named `AI-Hub-x.x.x-arm64.dmg`). The same hashes are in the `SHA256SUMS` file on that page.
-
-<details>
-<summary>macOS says the app can't be opened?</summary>
-
-![Allow AI Hub on macOS](assets/install-macos.gif)
-
-The pictures follow macOS 15 and later. The words on your Mac can differ. Click **Done**, then **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway**. Confirm, then enter your Mac password. You do this once for each downloaded version.
-
-</details>
-
-### Windows
-
-1. Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
-2. Run the installer
-3. Launch **AI Hub** from the Start Menu or Desktop shortcut
-
-Before you run it, compare its SHA-256 with the digest GitHub shows next to that file on the release page. In PowerShell: `Get-FileHash .\AI-Hub-x.x.x-Setup.exe -Algorithm SHA256`.
+Перед открытием сравните сумму SHA-256 с той, что GitHub показывает рядом с файлом на странице релиза. На Mac: `shasum -a 256 ~/Downloads/AI-Hub-x.x.x.dmg` (сборки Apple Silicon называются `AI-Hub-x.x.x-arm64.dmg`). Те же суммы лежат в файле `SHA256SUMS` на этой странице.
 
 <details>
-<summary>SmartScreen says it protected your PC?</summary>
+<summary>macOS говорит, что приложение нельзя открыть?</summary>
 
-![Allow AI Hub on Windows](assets/install-windows.gif)
+![Разрешить AI Hub на macOS](assets/install-macos.gif)
 
-Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then **Run anyway**. The warning is there because the installer is not code-signed yet.
-
-</details>
-
-### Linux
-
-Download the `.AppImage` for your machine from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest), mark it executable, and run it. `wireproxy` can be downloaded by the app or installed yourself.
-
----
-
-## Install
-
-### macOS — One command _(recommended)_
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
-```
-
-The app lands in `/Applications` and opens. A notarized build does not need a quarantine exception. The script clears that flag only when macOS does not accept the signature.
-
-A notarized build, once Apple signing secrets are set, is the step that lets a plain DMG open with no script and no warning. Setup for that is in [`docs/signing.md`](docs/signing.md).
-
-### macOS — Direct Download
-
-Download the right file for your Mac from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest):
-
-| Mac | File |
-|-----|------|
-| Apple Silicon (M1 / M2 / M3 / M4) | `AI-Hub-x.x.x-arm64.dmg` |
-| Intel Mac | `AI-Hub-x.x.x.dmg` |
-
-Open the DMG and drag **AI Hub.app** into `/Applications`.
-
-Before you open the file, compare its SHA-256 with the digest GitHub shows next to that file on the release page. On a Mac: `shasum -a 256 ~/Downloads/AI-Hub-x.x.x.dmg` (Apple Silicon builds are named `AI-Hub-x.x.x-arm64.dmg`).
-
-<details>
-<summary>macOS says the app can't be opened?</summary>
-
-![Allow AI Hub on macOS](assets/install-macos.gif)
-
-The pictures follow macOS 15 and later. The words on your Mac can differ. Click **Done**, then **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway**. Confirm, then enter your Mac password. You do this once for each downloaded version.
+Картинки сняты на macOS 15 и новее. Надписи на вашем Mac могут отличаться. Нажмите **Готово**, затем **Системные настройки → Конфиденциальность и безопасность**, прокрутите до **Безопасность** и выберите **Всё равно открыть** (Open Anyway). Подтвердите и введите пароль Mac. Это один раз для каждой скачанной версии.
 
 </details>
 
@@ -228,32 +94,123 @@ brew tap axiscoretech/tap
 brew install --cask ai-hub
 ```
 
-Homebrew also puts the app in `/Applications` and skips the manual Gatekeeper prompt. The one-command install above does the same thing without Homebrew.
+### Windows
 
-### Windows — Direct Download
+1. Скачайте `AI-Hub-x.x.x-Setup.exe` со страницы [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest)
+2. Запустите установщик
+3. Откройте **AI Hub** из меню Пуск или с ярлыка на рабочем столе
 
-Download `AI-Hub-x.x.x-Setup.exe` from [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest) and run the installer.
-
-| Windows | File |
-|---------|------|
-| 64-bit (x64) | `AI-Hub-x.x.x-Setup.exe` |
-
-Before you run it, compare its SHA-256 with the digest GitHub shows next to that file on the release page. In PowerShell: `Get-FileHash .\AI-Hub-x.x.x-Setup.exe -Algorithm SHA256`.
+Перед запуском сравните сумму SHA-256 с той, что GitHub показывает рядом с файлом. В PowerShell: `Get-FileHash .\AI-Hub-x.x.x-Setup.exe -Algorithm SHA256`.
 
 <details>
-<summary>SmartScreen says it protected your PC?</summary>
+<summary>SmartScreen говорит, что защитил компьютер?</summary>
 
-![Allow AI Hub on Windows](assets/install-windows.gif)
+![Разрешить AI Hub в Windows](assets/install-windows.gif)
 
-Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then **Run anyway**. The warning is there because the installer is not code-signed yet.
+Нажмите **Подробнее** (More info), проверьте, что файл называется `AI-Hub-Setup-x.x.x.exe`, затем **Выполнить в любом случае** (Run anyway). Предупреждение есть, потому что установщик пока не подписан.
 
 </details>
 
+### Linux
+
+Скачайте `.AppImage` для своей машины со страницы [**Releases**](https://github.com/axiscoretech/ai-hub/releases/latest), сделайте файл исполняемым и запустите. `wireproxy` может скачать само приложение, или поставьте его сами.
+
 ---
 
-## Supported services
+## Конфиденциальность
 
-| | Service | URL |
+AI Hub не отправляет телеметрию. Он обращается к сайтам, которые вы открываете, к GitHub, когда скачивает `wireproxy`, и к GitHub Releases, когда проверяет обновление приложения. Скачанное обновление предлагается к установке только после того, как его SHA-256 совпал с файлом `SHA256SUMS` этого релиза. Пока приложение не нотаризовано, macOS всё равно просит Gatekeeper (защиту системы) подтвердить обновление.
+
+Что остаётся на этом компьютере, в папке данных приложения (`~/Library/Application Support/AI Hub` на macOS, `%APPDATA%\AI Hub` на Windows, `~/.config/AI Hub` на Linux):
+
+- **Входы.** У каждого аккаунта своя сессия. Первый аккаунт сервиса — `Partitions/persist:<service>`. Следующий — `Partitions/persist:<service>:<account>`. Куки остаются в этой сессии. На macOS они не лежат в связке ключей входа, поэтому открытие приложения не спрашивает этот пароль второй раз. Сохранённый туннель WireGuard всё же обращается к связке ключей один раз, когда подключается снова.
+- **Конфиги WireGuard.** Импортированные файлы `.conf` шифруются хранилищем ключей системы (Keychain на macOS, DPAPI на Windows, связка ключей рабочего стола на Linux) и лежат в `wireguard/`. Если шифрование недоступно, AI Hub отказывается сохранять конфиг. Открытая копия есть только пока туннель работает, потом она удаляется.
+- **Задачи Compare.** `tasks.json`.
+- **Общая книга аккаунтов Google.** `google-accounts.json` записывает, какие профили делят один вход Google. Профили, оставленные отдельно, в эту группу не входят.
+- **Вход OpenClaw.** Токен панели сюда не пишется. Приложение запускает `openclaw dashboard --no-open`, читает локальный адрес из буфера обмена (токен — это фрагмент адреса), держит его в памяти этого окна и возвращает прежний текст буфера.
+- **Расширения.** `extensions/`.
+
+---
+
+## Окно
+
+Названия сервисов — это вкладки. Кнопки справа — значки:
+
+| Значок | Действие |
+|------|--------|
+| Круговая стрелка | Перезагрузить текущую страницу (`Cmd/Ctrl+R`) |
+| Круговая стрелка с точкой | Перезагрузить, не используя кэш (`Cmd/Ctrl+Shift+R`) |
+| Луна, солнце или монитор | Тема. Нажатие переключает тёмную, светлую и системную |
+| Две колонки | Compare (`Cmd/Ctrl+Shift+B`) |
+| Флаг | WireGuard. Когда соединение находит страну выхода, флаг становится флагом этой страны |
+
+`Escape` выходит из Compare и возвращает к текущему чату.
+
+---
+
+## Compare
+
+![Доска Compare с двумя задачами](assets/screenshot-compare.png)
+
+**Принцип:** AI Hub не отправляет ваш текст на сайты за вас.
+
+Compare — это доска в оболочке приложения, а не вторая система аккаунтов.
+
+1. Нажмите значок двух колонок или `Cmd/Ctrl+Shift+B`.
+2. Введите заголовок и текст, который хотите вставить в чаты.
+3. Отметьте сервисы и нажмите **Add task**.
+4. **Copy** кладёт текст в буфер обмена. В чат вставляете сами.
+5. **Open** переключает на этот сервис. Задание в очереди становится **Doing**. Если этот чат уже открывали из этой задачи, AI Hub возвращает сохранённую страницу.
+6. Статус ставите сами: **Queued**, **Doing**, **Ready** или **Done**.
+
+Янтарная точка значит, что заголовок фоновой вкладки изменился, пока задание было **Doing**. Это повод посмотреть, а не доказательство, что ответ готов. Точка снимается, когда вы открываете задание или меняете его статус.
+
+Задач можно хранить до 50. Удаление — с карточки задачи. Убрать последний сервис с задачи нельзя: у задачи всегда есть куда идти.
+
+**Insert**, когда чаты стоят рядом, ставит фокус в поле сообщения того чата, по которому вы нажали, и вписывает туда текст задачи. Это работает и с редакторами ProseMirror у Claude и ChatGPT. Кнопку отправки оно не нажимает.
+
+---
+
+## WireGuard
+
+![Панель WireGuard](assets/screenshot-wireguard.png)
+
+1. Нажмите флаг.
+2. Выберите **Import .conf** и укажите один или несколько файлов конфига WireGuard.
+3. Нажмите **Connect** у нужного конфига. **Switch location** переводит аккаунты туннеля на другой импортированный конфиг.
+4. **Disconnect** возвращает эти аккаунты на прямое соединение.
+
+Туннель используют только аккаунты, у которых выбран Tunnel. Маршрут задаётся для каждого аккаунта, поэтому рабочий и личный профиль одного сервиса могут выходить в разных странах. Остальная сеть системы остаётся как была. Если у аккаунта уже есть сессия сайта, смена маршрута предупреждает, что аккаунт увидит смену страны.
+
+У аккаунтов на туннеле также блокируется WebRTC по UDP, который иначе обошёл бы прокси и показал настоящий адрес. Блокировка остаётся, если туннель оборвался и аккаунт отрезан от сети. У аккаунтов с Direct обычный WebRTC сохраняется.
+
+При первом подключении приложение может скачать `wireproxy`, если его ещё нет (`brew install wireproxy` ставит его самим). Когда место выхода известно, значок флага показывает эту страну.
+
+В панели флага у каждого аккаунта свой выбор: **Tunnel** или **Direct**. OpenClaw остаётся на этом компьютере, и выбора туннеля у него нет.
+
+---
+
+## Google
+
+Кнопка **G** делит один вход Google только с профилями, которые вы отметили **Shared**. Профиль **Own account** держит отдельный вход Google. Новый дополнительный аккаунт начинается как свой. **Sign in shared profiles** копирует общую сессию Google в профили этой группы и не трогает остальные.
+
+---
+
+## OpenClaw
+
+OpenClaw — локальный помощник, который раньше назывался Clawd, Clawdbot и Moltbot.
+
+Если OpenClaw нет, **Install OpenClaw** сначала спрашивает, затем скачивает [https://openclaw.ai/install.sh](https://openclaw.ai/install.sh) и запускает этот скрипт через `/bin/bash`. Другого установщика нет, а переход с `openclaw.ai` отклоняется. **Update** сначала спрашивает, затем запускает `openclaw update --yes --json --timeout 600` тем OpenClaw, который уже стоит на этом компьютере.
+
+Вход не использует пароль, который вы вводите в AI Hub. Приложение запускает `openclaw dashboard --no-open`. OpenClaw копирует локальный адрес панели в буфер обмена, и токен входа — это фрагмент этого адреса. AI Hub его читает, открывает страницу, возвращает прежний текст буфера и держит токен в памяти окна. В файлы приложения он не пишется.
+
+Если шлюз уже запущен, вкладка OpenClaw открывает его панель. Сопряжение остаётся на этой машине.
+
+---
+
+## Сервисы
+
+| | Сервис | Адрес |
 |---|---|-----|
 | <img src="assets/services/chatgpt.png" width="18" height="18" alt=""> | ChatGPT | [chatgpt.com](https://chatgpt.com) |
 | <img src="assets/services/claude.png" width="18" height="18" alt=""> | Claude | [claude.ai](https://claude.ai) |
@@ -264,13 +221,13 @@ Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then 
 | <img src="assets/services/mistral.png" width="18" height="18" alt=""> | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
 | <img src="assets/services/qwen.png" width="18" height="18" alt=""> | Qwen | [chat.qwen.ai](https://chat.qwen.ai) |
 | <img src="assets/services/kimi.png" width="18" height="18" alt=""> | Kimi | [kimi.com](https://www.kimi.com) |
-| <img src="assets/services/openclaw.png" width="18" height="18" alt=""> | OpenClaw | local gateway, usually `127.0.0.1:18789` |
+| <img src="assets/services/openclaw.png" width="18" height="18" alt=""> | OpenClaw | локальный шлюз, обычно `127.0.0.1:18789` |
 
-ChatGPT may still pass through `chat.openai.com` before it lands on `chatgpt.com`. Both stay inside the ChatGPT tab.
+ChatGPT может пройти через `chat.openai.com`, прежде чем окажется на `chatgpt.com`. Оба адреса остаются во вкладке ChatGPT.
 
 ---
 
-## Run from source
+## Запуск из исходников
 
 ```bash
 git clone https://github.com/axiscoretech/ai-hub
@@ -279,36 +236,36 @@ npm install
 npm start
 ```
 
-Requires [Node.js](https://nodejs.org) 18+ and [npm](https://npmjs.com).
+Нужны [Node.js](https://nodejs.org) 18+ и [npm](https://npmjs.com).
 
 ```bash
-npm test   # board, WireGuard, services, and an Electron smoke check
+npm test   # доска, WireGuard, сервисы и проверка запуска Electron
 ```
 
 ---
 
-## For Developers
+## Для разработчиков
 
-## Build
+## Сборка
 
 ```bash
-npm run dist        # macOS ARM64 + x64 DMG → dist/
-npm run dist:arm    # Apple Silicon only
-npm run dist:x64    # Intel Mac only
-npm run dist:win    # Windows x64 NSIS installer → dist/
-npm run dist:linux  # Linux AppImage → dist/
-npm run open-app    # unpacked macOS app in dist/mac, then open it
+npm run dist        # DMG для macOS ARM64 и x64 → dist/
+npm run dist:arm    # только Apple Silicon
+npm run dist:x64    # только Intel
+npm run dist:win    # установщик Windows x64 → dist/
+npm run dist:linux  # AppImage для Linux → dist/
+npm run open-app    # распакованное приложение macOS в dist/mac, затем открыть его
 ```
 
-## Maintainers
+## Тем, кто выпускает сборки
 
-Apple code signing and notarization setup lives in [`docs/signing.md`](docs/signing.md).
-Once Apple Developer access is available, add the required GitHub Actions secrets and future releases will be signed automatically.
+Подпись и нотаризация Apple описаны в [`docs/signing.md`](docs/signing.md).
+Когда появится доступ Apple Developer, добавьте нужные секреты GitHub Actions, и следующие релизы будут подписываться сами.
 
 ---
 
 <div align="center">
 
-Made with ☕ · [axiscoretech](https://github.com/axiscoretech)
+Сделано с ☕ · [axiscoretech](https://github.com/axiscoretech)
 
 </div>
