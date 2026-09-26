@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "open-app": "node scripts/open-local-app.js",
     "verify:extensions": "electron scripts/verify-extensions.js",
+    "smoke:services": "npm run build && electron scripts/smoke-services.js",
     "dist": "npm run build && electron-builder --mac --x64 --arm64 --publish never",
     "dist:arm": "npm run build && electron-builder --mac --arm64 --publish never",
     "dist:x64": "npm run build && electron-builder --mac --x64 --publish never",

@@ -2,6 +2,8 @@
 const { globalShortcut, clipboard } = require("electron");
 const { handle } = require("./ipc-bind");
 
+const COMPOSER_SELECTOR = "textarea, [contenteditable]";
+
 function createCompare(options = {}) {
   const state = {
     get win() { return options.window(); },
@@ -106,7 +108,7 @@ function createCompare(options = {}) {
   }
 
   const FOCUS_COMPOSER_SCRIPT = `(() => {
-    const nodes = [...document.querySelectorAll("textarea, [contenteditable]")];
+    const nodes = [...document.querySelectorAll(${JSON.stringify(COMPOSER_SELECTOR)})];
     const visible = nodes.filter((el) => {
       if (el.getAttribute("contenteditable") === "false") return false;
       const style = getComputedStyle(el);
@@ -186,4 +188,4 @@ function createCompare(options = {}) {
   };
 }
 
-module.exports = { createCompare };
+module.exports = { createCompare, COMPOSER_SELECTOR };
