@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- macOS no longer asks for the login password twice when the app opens. Site sessions stay in the app, and a saved tunnel uses the keychain once.
+- Applying a shared Google account opens the service without asking for that password again.
+- Account switching and adding an account are one Account menu. Update AI Hub appears in the toolbar when a newer release is ready, checks the download, and installs it.
+- Toolbar buttons stay readable in the light theme.
+- The README hero is a picture of the app, not the empty loading bar.
+- The app icon is the new ring mark, in the dock, the installer, and the README.
+
 ## 1.5.0
 
 - Each account has its own tunnel or direct route. Changing the route of an account that already has a site session warns that it will see a country change.

@@ -89,4 +89,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateInstall: () => invoke("update-install"),
   onUpdateAvailable: (cb: (info: unknown) => void) => listen("update-available", cb),
   onUpdateDownloaded: (cb: () => void) => listen("update-downloaded", cb),
+  onUpdateFailed: (cb: () => void) => listen("update-failed", cb),
+  showAccountMenu: () => send("show-account-menu"),
+  onAccountAdd: (cb: () => void) => listen("account-add", cb),
 });

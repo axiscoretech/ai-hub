@@ -38,6 +38,36 @@ test("the app starts, isolates partitions, and blocks outside navigation", async
     });
     assert.equal(policy.outside, true);
     assert.equal(policy.inside, false);
+    await window.locator('.tab[data-name="ChatGPT"]').click();
+    await window.waitForSelector("#account-switch:not([hidden])");
+    await window.evaluate(() => {
+      document.body.dataset.theme = "light";
+      document.documentElement.dataset.theme = "light";
+    });
+    const ui = await window.evaluate(() => {
+      const menu = document.getElementById("account-menu");
+      const update = document.getElementById("hub-update");
+      const menuColor = getComputedStyle(menu).color;
+      const bar = document.getElementById("update-bar");
+      bar.hidden = false;
+      const download = document.getElementById("update-action");
+      const downloadColor = getComputedStyle(download).color;
+      bar.hidden = true;
+      return {
+        menuLabel: menu.getAttribute("aria-label"),
+        menuText: menu.textContent,
+        menuColor,
+        downloadColor,
+        updateHidden: update.hidden,
+        hasSelect: Boolean(document.getElementById("account-select")),
+      };
+    });
+    assert.equal(ui.menuLabel, "Account");
+    assert.equal(ui.menuText, "Default");
+    assert.equal(ui.updateHidden, true);
+    assert.equal(ui.hasSelect, false);
+    assert.equal(ui.menuColor, "rgb(17, 24, 39)");
+    assert.equal(ui.downloadColor, "rgb(17, 24, 39)");
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });

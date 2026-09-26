@@ -523,7 +523,10 @@ function createWireguard(options) {
   }
 
   function migratePlaintextConfigs() {
-    if (!encryptionAvailable()) return;
+    const pending = profiles.some((entry) => (
+      fs.existsSync(confFile(entry.id)) && !fs.existsSync(encryptedConfFile(entry.id))
+    ));
+    if (!pending || !encryptionAvailable()) return;
     for (const entry of profiles) {
       const plain = confFile(entry.id);
       if (!fs.existsSync(plain)) continue;

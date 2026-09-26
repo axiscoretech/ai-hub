@@ -4,6 +4,9 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { _electron: electron } = require("playwright");
 
+// The page itself is a separate view and is not in this window screenshot,
+// so the old clip was only the toolbar plus an empty loading band.
+// The README uses assets/screenshot.png instead.
 async function main() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), "ai-hub-gif-"));
   const frames = fs.mkdtempSync(path.join(os.tmpdir(), "ai-hub-frames-"));

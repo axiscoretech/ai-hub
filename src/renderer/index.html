@@ -155,6 +155,33 @@
         -webkit-app-region: no-drag;
       }
       #account-switch[hidden] { display: none; }
+      #account-menu, #hub-update {
+        font: inherit;
+        font-size: 12px;
+        border-radius: 7px;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      #account-menu {
+        color: #eee;
+        background: #2a2a2a;
+        border: 1px solid #3a3a3a;
+        padding: 4px 8px;
+        max-width: 148px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #hub-update {
+        color: #fff;
+        background: #5b4dff;
+        border: 0;
+        font-weight: 650;
+        padding: 4px 10px;
+        margin-right: 8px;
+      }
+      #hub-update[hidden] { display: none; }
+      #hub-update:disabled { opacity: 0.72; }
       #account-select, #find-input, #custom-name, #custom-url, #hotkey-input, #spellcheck-input {
         font: inherit;
         font-size: 12px;
@@ -192,6 +219,16 @@
       body[data-theme="light"] #compare-bar,
       body[data-theme="light"] #update-bar,
       body[data-theme="light"] #oc-update-bar { background: #fff; color: #1f2937; }
+      body[data-theme="light"] #find-bar button,
+      body[data-theme="light"] #compare-bar button,
+      body[data-theme="light"] #update-bar button,
+      body[data-theme="light"] #oc-update-bar button,
+      body[data-theme="light"] #account-menu,
+      body[data-theme="light"] .svc-row button {
+        color: #111827;
+        background: #fff;
+        border-color: #cdd6e5;
+      }
       body[data-theme="light"] #account-select,
       body[data-theme="light"] #find-input,
       body[data-theme="light"] #custom-name,
@@ -804,9 +841,9 @@
       <div id="progress-bar"></div>
 
       <div id="tabs"></div>
+      <button type="button" id="hub-update" hidden>Update AI Hub</button>
       <div id="account-switch" hidden>
-        <select id="account-select" aria-label="Account"></select>
-        <button type="button" id="account-add">Add account</button>
+        <button type="button" id="account-menu" aria-haspopup="menu" aria-label="Account">Account</button>
       </div>
 
       <div id="vpn-area">
@@ -2020,21 +2057,15 @@
 
       function renderAccountSwitch() {
         const wrap = document.getElementById("account-switch");
-        const select = document.getElementById("account-select");
+        const button = document.getElementById("account-menu");
         const service = activeServiceRecord();
-        if (!wrap || !select || !service || service.id === "OpenClaw") {
+        if (!wrap || !button || !service || service.id === "OpenClaw") {
           if (wrap) wrap.hidden = true;
           return;
         }
         wrap.hidden = false;
-        select.textContent = "";
-        service.accounts.forEach((account) => {
-          const option = document.createElement("option");
-          option.value = account.id;
-          option.textContent = account.label || account.id;
-          option.selected = account.id === service.activeAccountId;
-          select.appendChild(option);
-        });
+        const current = (service.accounts || []).find((account) => account.id === service.activeAccountId);
+        button.textContent = (current && current.label) || "Account";
       }
 
       async function setAccountRoute(serviceId, accountId, route) {
@@ -2146,16 +2177,15 @@
         if (!window.electronAPI || !window.electronAPI.onServices) return;
         window.electronAPI.onServices(onServices);
         window.electronAPI.servicesList().then(onServices).catch(() => {});
-        const select = document.getElementById("account-select");
-        if (select) {
-          select.addEventListener("change", () => {
+        const menu = document.getElementById("account-menu");
+        if (menu && window.electronAPI.showAccountMenu) {
+          menu.addEventListener("click", () => {
             if (!activeTabName) return;
-            void window.electronAPI.servicesSetAccount({ id: activeTabName, accountId: select.value });
+            window.electronAPI.showAccountMenu();
           });
         }
-        const add = document.getElementById("account-add");
-        if (add) {
-          add.addEventListener("click", () => {
+        if (window.electronAPI.onAccountAdd) {
+          window.electronAPI.onAccountAdd(() => {
             if (!activeTabName) return;
             const label = window.prompt("Name this account", "Work");
             if (!label) return;
@@ -2290,26 +2320,48 @@
       }
 
       function initUpdates() {
-        if (!window.electronAPI.onUpdateAvailable) return;
-        const text = document.getElementById("update-text");
-        const action = document.getElementById("update-action");
+        const action = document.getElementById("hub-update");
+        if (!action || !window.electronAPI.onUpdateAvailable) return;
+        let installAfterDownload = false;
+        const show = (label, mode, disabled) => {
+          action.hidden = false;
+          action.textContent = label;
+          action.dataset.mode = mode;
+          action.disabled = Boolean(disabled);
+        };
         window.electronAPI.onUpdateAvailable((info) => {
-          if (text) text.textContent = "AI Hub " + ((info && info.version) || "") + " is ready.";
-          if (action) {
-            action.textContent = "Download";
-            action.dataset.mode = "download";
-          }
-          setBar("update-bar", true);
+          installAfterDownload = false;
+          const version = info && info.version ? " " + info.version : "";
+          show("Update AI Hub" + version, "download", false);
         });
         window.electronAPI.onUpdateDownloaded(() => {
-          if (text) text.textContent = "AI Hub is downloaded. Restart to install it.";
-          if (action) action.textContent = "Restart";
-          action.dataset.mode = "install";
-          setBar("update-bar", true);
+          if (installAfterDownload) {
+            installAfterDownload = false;
+            show("Installing…", "install", true);
+            void window.electronAPI.updateInstall();
+            return;
+          }
+          show("Restart to update", "install", false);
         });
+        if (window.electronAPI.onUpdateFailed) {
+          window.electronAPI.onUpdateFailed(() => {
+            installAfterDownload = false;
+            show("Update failed", "download", false);
+          });
+        }
         action.addEventListener("click", () => {
-          if (action.dataset.mode === "install") void window.electronAPI.updateInstall();
-          else void window.electronAPI.updateDownload();
+          if (action.dataset.mode === "install") {
+            show("Installing…", "install", true);
+            void window.electronAPI.updateInstall();
+            return;
+          }
+          installAfterDownload = true;
+          show("Downloading…", "download", true);
+          void window.electronAPI.updateDownload().then((result) => {
+            if (result && result.success) return;
+            installAfterDownload = false;
+            show("Update failed", "download", false);
+          });
         });
       }
 
@@ -2320,7 +2372,7 @@
         toolbar.addEventListener("mousedown", (event) => {
           if (event.button !== 0) return;
           const target = event.target;
-          if (target && target.closest && target.closest("button, a, input, select, .tab, #account-switch, #vpn-area")) return;
+          if (target && target.closest && target.closest("button, a, input, select, .tab, #account-switch, #hub-update, #vpn-area")) return;
           drag = { x: event.screenX, y: event.screenY };
         });
         window.addEventListener("mousemove", (event) => {

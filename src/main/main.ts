@@ -1,6 +1,13 @@
 import { handle } from "./ipc-bind";
-const { app, BrowserWindow, WebContentsView, ipcMain, session, webContents, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
+const { app, BrowserWindow, WebContentsView, Menu, ipcMain, session, webContents, dialog, shell, nativeTheme, Notification, globalShortcut, clipboard } = require("electron");
 const path = require("path");
+
+if (process.platform === "darwin") {
+  // An ad-hoc signature makes macOS ask for the login password twice: once for
+  // Chromium's cookie keychain item and again for this app. Site sessions stay
+  // in the app's own files, so startup does not touch the login keychain.
+  app.commandLine.appendSwitch("use-mock-keychain");
+}
 
 if (process.env.AI_HUB_USER_DATA) {
   app.setPath("userData", process.env.AI_HUB_USER_DATA);
@@ -27,6 +34,7 @@ const {
   CLICK_GOOGLE_SCRIPT,
 } = require("./google");
 const { checksumFor } = require("./checksums");
+const { macUpdateScript } = require("./mac-update");
 const {
   inspectOpenClaw,
   startOpenClawGateway,
@@ -470,6 +478,7 @@ function registerHotkey() {
 
 let autoUpdater = null;
 let updateReady = false;
+let updateFile = "";
 
 function releaseChecksumUrl(url) {
   try {
@@ -539,18 +548,27 @@ function setupUpdates() {
     return;
   }
   autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.on("update-available", (info) => {
     if (win && !win.isDestroyed()) win.webContents.send("update-available", { version: info && info.version });
   });
   autoUpdater.on("update-downloaded", (info) => {
     updateReady = false;
+    updateFile = "";
     const file = info && info.downloadedFile;
     const version = info && info.version;
     void verifyDownloadedUpdate(file, version).then((ok) => {
-      if (!ok) return;
+      if (!win || win.isDestroyed()) return;
+      if (!ok) {
+        win.webContents.send("update-failed");
+        return;
+      }
       updateReady = true;
-      if (win && !win.isDestroyed()) win.webContents.send("update-downloaded");
-    }).catch(() => {});
+      updateFile = file;
+      win.webContents.send("update-downloaded");
+    }).catch(() => {
+      if (win && !win.isDestroyed()) win.webContents.send("update-failed");
+    });
   });
   autoUpdater.on("error", () => {});
   autoUpdater.checkForUpdates().catch(() => {});
@@ -2207,19 +2225,20 @@ function armGoogleClick(view, name) {
   view.webContents.on("did-finish-load", onLoad);
 }
 
-function openServiceForGoogle(name) {
-  const url = loginUrlFor(name) || tabs[name];
+function openServiceForGoogle(name, options: any = {}) {
+  const url = options.home ? (tabs[name] || loginUrlFor(name)) : (loginUrlFor(name) || tabs[name]);
   const background = Boolean(activeTab && activeTab !== name);
+  const googleClick = !options.home && name !== "Gemini";
   if (!isViewUsable(views[name])) {
-    createTab(name, url, { background, googleClick: name !== "Gemini" });
+    createTab(name, url, { background, googleClick });
     return;
   }
   const view = views[name];
-  if (name !== "Gemini") armGoogleClick(view, name);
+  if (googleClick) armGoogleClick(view, name);
   let current = "";
   try { current = view.webContents.getURL(); } catch {}
   if (current !== url) view.webContents.loadURL(url);
-  else if (name !== "Gemini") view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
+  else if (googleClick) view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
 }
 
 async function rememberGoogleEmail(page) {
@@ -2289,7 +2308,7 @@ async function applySharedGoogle() {
     const target = session.fromPartition(partition);
     await clearGoogleCookies(target);
     await copyGoogleCookies(source, target);
-    if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId);
+    if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId, { home: true });
   }
   return publishGoogle();
 }
@@ -2319,6 +2338,32 @@ function googleMembershipTarget(payload) {
 
 ipcMain.on("switch-tab", (_event, tabName) => {
   void handleSwitchTab(tabName);
+});
+
+ipcMain.on("show-account-menu", (event) => {
+  const serviceId = activeTab;
+  if (!serviceId || serviceId === OPENCLAW_TAB || !win || win.isDestroyed()) return;
+  const service = services.list().services.find((item) => item.id === serviceId);
+  if (!service || !service.accounts.length) return;
+  const menu = Menu.buildFromTemplate([
+    ...service.accounts.map((account) => ({
+      label: account.label || "Account",
+      type: "radio",
+      checked: account.id === service.activeAccountId,
+      click: () => {
+        void services.setActiveAccount(serviceId, account.id).then(() => {
+          if (tabs[serviceId]) switchTab(serviceId);
+        });
+      },
+    })),
+    { type: "separator" },
+    {
+      label: "Add account",
+      click: () => event.sender.send("account-add"),
+    },
+  ]);
+  const parent = BrowserWindow.fromWebContents(event.sender) || win;
+  menu.popup({ window: parent });
 });
 
 handle("services-list", () => services.list());
@@ -2475,10 +2520,35 @@ handle("update-download", async () => {
   }
 });
 
+function macAppBundlePath() {
+  return path.resolve(process.execPath, "..", "..", "..");
+}
+
+function macHasDeveloperId() {
+  const { spawnSync } = require("child_process");
+  const result = spawnSync("codesign", ["-dvv", macAppBundlePath()], { encoding: "utf8" });
+  return /Authority=Developer ID Application:/.test(`${result.stdout || ""}\n${result.stderr || ""}`);
+}
+
+function installUnsignedMacUpdate() {
+  const { spawn } = require("child_process");
+  const appPath = macAppBundlePath();
+  const scriptPath = path.join(os.tmpdir(), `ai-hub-update-${process.pid}.sh`);
+  const script = macUpdateScript({ pid: process.pid, zipPath: updateFile, appPath, scriptPath });
+  fs.writeFileSync(scriptPath, script, { mode: 0o700 });
+  const child = spawn("/bin/bash", [scriptPath], { detached: true, stdio: "ignore" });
+  child.unref();
+  app.quit();
+}
+
 handle("update-install", () => {
   if (!autoUpdater) return { success: false, error: "Updates are available in the installed app" };
-  if (!updateReady) return { success: false, error: "The download did not match the published checksum." };
-  autoUpdater.quitAndInstall();
+  if (!updateReady || !updateFile) return { success: false, error: "The download did not match the published checksum." };
+  if (process.platform === "darwin" && !macHasDeveloperId()) {
+    installUnsignedMacUpdate();
+    return { success: true };
+  }
+  autoUpdater.quitAndInstall(false, true);
   return { success: true };
 });
 
@@ -2811,7 +2881,7 @@ handle("google-use-shared", async (_event, payload) => {
     const sessionTarget = session.fromPartition(partition);
     await clearGoogleCookies(sessionTarget);
     await copyGoogleCookies(source, sessionTarget);
-    if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId);
+    if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId, { home: true });
   }
   return publishGoogle();
 });

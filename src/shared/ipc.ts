@@ -64,6 +64,7 @@ export const sendChannels = [
   "open-external",
   "set-content-theme",
   "move-window-by",
+  "show-account-menu",
 ] as const;
 
 export type InvokeChannel = (typeof invokeChannels)[number];

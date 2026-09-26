@@ -16,9 +16,9 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
-![Switching hub tabs](assets/tab-switch.gif)
+![AI Hub with ChatGPT open](assets/screenshot.png)
 
-*Switch tabs without reloading. Each service keeps its own login.*
+*ChatGPT stays open beside the other services. Switching tabs does not reload the page.*
 
 ---
 
@@ -47,7 +47,7 @@ AI Hub does not send telemetry. It talks to the sites you open, to GitHub when i
 
 What stays on this computer, under the app's user data folder (`~/Library/Application Support/AI Hub` on macOS, `%APPDATA%\AI Hub` on Windows, `~/.config/AI Hub` on Linux):
 
-- **Logins.** Each account has its own session partition. The first account of a service is `Partitions/persist:<service>`. Another account is `Partitions/persist:<service>:<account>`. Cookies stay in that partition.
+- **Logins.** Each account has its own session partition. The first account of a service is `Partitions/persist:<service>`. Another account is `Partitions/persist:<service>:<account>`. Cookies stay in that partition. On macOS they are not stored in the login keychain, so opening the app does not ask for that password twice. A saved WireGuard tunnel still uses the keychain once, when it reconnects.
 - **WireGuard configs.** Imported `.conf` files are encrypted with the operating system key store (Keychain on macOS, DPAPI on Windows, the desktop keyring on Linux) and stored in `wireguard/`. If encryption is not available, AI Hub refuses to save the config. A plaintext copy exists only while that tunnel is running, then it is deleted.
 - **Compare tasks.** `tasks.json`.
 - **Shared Google account book.** `google-accounts.json` records which profiles share one Google sign-in. Profiles left on their own are not in that group.
