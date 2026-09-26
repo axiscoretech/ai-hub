@@ -4,7 +4,7 @@
 
 # AI Hub
 
-**Separate sessions, a tunnel only for the hub tabs you choose, and no typing into those sites for you.**
+**Separate sessions, a tunnel only for the hub tabs you choose, and you send every message yourself.**
 
 ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · OpenClaw
 
@@ -16,13 +16,13 @@ ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen
 
 ---
 
-![AI Hub with ChatGPT open](assets/screenshot.png)
+![AI Hub switching signed-in tabs](assets/demo.gif)
 
-*ChatGPT stays open beside the other services. Switching tabs does not reload the page.*
+*Dark theme, signed in. Switching tabs does not reload the page. The flag changes with the WireGuard exit country.*
 
 ---
 
-A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Each account has its own login and its own choice of tunnel or direct connection. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites. It does not type into them.
+A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, Mistral, Qwen, Kimi, and a local [OpenClaw](https://openclaw.ai) gateway in one native window. Each service has its own session, and a service can hold more than one account. Each account has its own login and its own choice of tunnel or direct connection. Logins persist, tabs stay live, and the chats stay out of your browser. The app opens the real websites.
 
 ---
 
@@ -37,7 +37,7 @@ A macOS, Windows, and Linux app that keeps ChatGPT, Claude, Gemini, DeepSeek, Gr
 - **Theme** — dark, light, or match the system
 - **OpenClaw** — a tab for a local OpenClaw gateway. Installing or updating it asks first and uses the official source
 
-The app opens the real websites. It does not sell credits, and it does not type into those sites for you.
+The app opens the real websites. It does not sell credits, and it does not send a prompt into those sites for you.
 
 ---
 
@@ -75,6 +75,8 @@ The service names are tabs. The buttons on the right are icons:
 ## Compare
 
 ![Compare board with two tasks](assets/screenshot-compare.png)
+
+**Principle:** AI Hub does not send a prompt into the sites for you.
 
 Compare is a board in the shell, not a second account system.
 
@@ -252,17 +254,17 @@ Click **More info**, check that the file name is `AI-Hub-Setup-x.x.x.exe`, then 
 ## Supported services
 
 | | Service | URL |
-|---|---------|-----|
-| | ChatGPT | [chatgpt.com](https://chatgpt.com) |
-| | Claude | [claude.ai](https://claude.ai) |
-| | Gemini | [gemini.google.com](https://gemini.google.com) |
-| | DeepSeek | [chat.deepseek.com](https://chat.deepseek.com) |
-| | Grok | [grok.com](https://grok.com) |
-| | Perplexity | [perplexity.ai](https://www.perplexity.ai) |
-| | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
-| | Qwen | [chat.qwen.ai](https://chat.qwen.ai) |
-| | Kimi | [kimi.com](https://www.kimi.com) |
-| | OpenClaw | local gateway, usually `127.0.0.1:18789` |
+|---|---|-----|
+| <img src="assets/services/chatgpt.png" width="18" height="18" alt=""> | ChatGPT | [chatgpt.com](https://chatgpt.com) |
+| <img src="assets/services/claude.png" width="18" height="18" alt=""> | Claude | [claude.ai](https://claude.ai) |
+| <img src="assets/services/gemini.svg" width="18" height="18" alt=""> | Gemini | [gemini.google.com](https://gemini.google.com) |
+| <img src="assets/services/deepseek.png" width="18" height="18" alt=""> | DeepSeek | [chat.deepseek.com](https://chat.deepseek.com) |
+| <img src="assets/services/grok.png" width="18" height="18" alt=""> | Grok | [grok.com](https://grok.com) |
+| <img src="assets/services/perplexity.png" width="18" height="18" alt=""> | Perplexity | [perplexity.ai](https://www.perplexity.ai) |
+| <img src="assets/services/mistral.png" width="18" height="18" alt=""> | Mistral | [chat.mistral.ai](https://chat.mistral.ai) |
+| <img src="assets/services/qwen.png" width="18" height="18" alt=""> | Qwen | [chat.qwen.ai](https://chat.qwen.ai) |
+| <img src="assets/services/kimi.png" width="18" height="18" alt=""> | Kimi | [kimi.com](https://www.kimi.com) |
+| <img src="assets/services/openclaw.png" width="18" height="18" alt=""> | OpenClaw | local gateway, usually `127.0.0.1:18789` |
 
 ChatGPT may still pass through `chat.openai.com` before it lands on `chatgpt.com`. Both stay inside the ChatGPT tab.
 

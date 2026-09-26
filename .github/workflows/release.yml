@@ -133,7 +133,8 @@ jobs:
           )
           gh release upload "$tag" "$RUNNER_TEMP/release-assets/SHA256SUMS" --repo "$GITHUB_REPOSITORY" --clobber
           notes="$(node scripts/release-notes.js)"
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "$notes"
+          title="$(node scripts/release-notes.js --title)"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes "$notes"
 
   build-win:
     runs-on: windows-latest

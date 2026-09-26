@@ -289,6 +289,31 @@
         transition: background 0.15s, color 0.15s;
         -webkit-app-region: no-drag;
       }
+      .tab-mark {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        background: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+      }
+      .tab-mark img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+        display: block;
+      }
+      .tab-mark.tab-mark-letter {
+        background: #5b4fd6;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 16px;
+        justify-content: center;
+      }
       .tab:hover { background: #2e2e2e; color: #fff; }
       .tab.active {
         background: #3a3a3a;
@@ -1999,17 +2024,54 @@
       }
 
       const TAB_ICONS = {
-        ChatGPT: "🤖",
-        Claude: "✨",
-        Gemini: "🌌",
-        DeepSeek: "🧠",
-        Qwen: "🐉",
-        Perplexity: "🔎",
-        Mistral: "🌬️",
-        Kimi: "🌙",
-        Grok: "⚡",
-        OpenClaw: "🦞",
+        ChatGPT: "icons/chatgpt.png",
+        Claude: "icons/claude.png",
+        Gemini: "icons/gemini.svg",
+        DeepSeek: "icons/deepseek.png",
+        Qwen: "icons/qwen.png",
+        Perplexity: "icons/perplexity.png",
+        Mistral: "icons/mistral.png",
+        Kimi: "icons/kimi.png",
+        Grok: "icons/grok.png",
+        OpenClaw: "icons/openclaw.png",
       };
+
+      function letterFor(name) {
+        const ch = String(name || "?").trim().charAt(0);
+        return ch ? ch.toUpperCase() : "?";
+      }
+
+      function faviconFor(service) {
+        if (TAB_ICONS[service.id]) return TAB_ICONS[service.id];
+        try {
+          const url = new URL(service.url);
+          if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+          return `${url.origin}/favicon.ico`;
+        } catch {
+          return "";
+        }
+      }
+
+      function serviceMark(service) {
+        const mark = document.createElement("span");
+        mark.className = "tab-mark";
+        const src = faviconFor(service);
+        if (!src) {
+          mark.classList.add("tab-mark-letter");
+          mark.textContent = letterFor(service.name);
+          return mark;
+        }
+        const img = document.createElement("img");
+        img.alt = "";
+        img.draggable = false;
+        img.src = src;
+        img.addEventListener("error", () => {
+          mark.textContent = letterFor(service.name);
+          mark.classList.add("tab-mark-letter");
+        });
+        mark.appendChild(img);
+        return mark;
+      }
       let serviceState = { services: [], hotkey: "", spellcheckLanguages: [] };
 
       function visibleServices() {
@@ -2022,8 +2084,7 @@
         tab.dataset.name = service.id;
         if (service.id === activeTabName) tab.classList.add("active");
         tab.title = local ? "OpenClaw, on this computer" : service.name;
-        const icon = document.createElement("span");
-        icon.textContent = TAB_ICONS[service.id] || "🌐";
+        const icon = serviceMark(service);
         const label = document.createElement("span");
         label.textContent = service.name;
         const spinner = document.createElement("span");
