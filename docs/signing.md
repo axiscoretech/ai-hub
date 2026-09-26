@@ -59,6 +59,25 @@ codesign --verify --deep --strict --verbose=2 "/Applications/AI Hub.app"
 xcrun stapler validate "/Applications/AI Hub.app"
 ```
 
+## Windows code signing
+
+The Windows job signs the installer when one of these secret sets is present. Otherwise it publishes an unsigned installer, and SmartScreen asks the user to confirm it.
+
+Certificate (a `.pfx` code-signing certificate):
+
+- `WIN_CSC_LINK`: path, URL, or base64 contents of the `.pfx`
+- `WIN_CSC_KEY_PASSWORD`: password for that certificate
+
+Azure Trusted Signing:
+
+- `AZURE_TENANT_ID`
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `AZURE_CODE_SIGNING_NAME`: code signing account name
+- `AZURE_CERT_PROFILE`: certificate profile name
+- `AZURE_PUBLISHER_NAME`: publisher name on the certificate
+- `AZURE_SIGNING_ENDPOINT`: optional, defaults to `https://eus.codesigning.azure.net/`
+
 ## Notes
 
 - If the Apple secrets are missing, the workflow still builds an unsigned release. macOS Gatekeeper then asks again on each update. The app offers that update only after the downloaded file's SHA-256 matches `SHA256SUMS` on the GitHub release. Signing and notarization are what make the update install without that prompt.

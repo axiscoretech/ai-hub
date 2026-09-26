@@ -93,6 +93,15 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Verify the signed Mac apps
+        if: steps.signing.outputs.enabled == 'true'
+        run: |
+          for app in "dist/mac/AI Hub.app" "dist/mac-arm64/AI Hub.app"; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            spctl --assess --type open --context context:primary-signature -v "$app"
+            xcrun stapler validate "$app"
+          done
+
       - name: Build and publish unsigned release
         if: steps.signing.outputs.enabled != 'true'
         run: |
@@ -164,7 +173,57 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build and publish Windows release
+      - name: Detect Windows signing secrets
+        id: winsign
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CODE_SIGNING_NAME: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
+        run: |
+          if [ -n "$WIN_CSC_LINK" ] && [ -n "$WIN_CSC_KEY_PASSWORD" ]; then
+            echo "mode=certificate" >> "$GITHUB_OUTPUT"
+            echo "Windows release will be signed with the certificate."
+          elif [ -n "$AZURE_TENANT_ID" ] && [ -n "$AZURE_CLIENT_ID" ] && \
+               [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_CODE_SIGNING_NAME" ] && \
+               [ -n "$AZURE_CERT_PROFILE" ] && [ -n "$AZURE_PUBLISHER_NAME" ]; then
+            echo "mode=azure" >> "$GITHUB_OUTPUT"
+            echo "Windows release will be signed with Azure Trusted Signing."
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+            echo "Windows signing secrets are missing. Building an unsigned release."
+          fi
+
+      - name: Build and publish certificate-signed Windows release
+        if: steps.winsign.outputs.mode == 'certificate'
+        run: npx electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build and publish Azure-signed Windows release
+        if: steps.winsign.outputs.mode == 'azure'
+        run: |
+          node -e "const fs=require('fs'); const build=require('./package.json').build; build.win.azureSignOptions={publisherName:process.env.AZURE_PUBLISHER_NAME,endpoint:process.env.AZURE_SIGNING_ENDPOINT||'https://eus.codesigning.azure.net/',certificateProfileName:process.env.AZURE_CERT_PROFILE,codeSigningAccountName:process.env.AZURE_CODE_SIGNING_NAME}; fs.writeFileSync(process.env.RUNNER_TEMP+'/electron-builder.json', JSON.stringify(build));"
+          npx electron-builder --win --x64 --publish always --config "$RUNNER_TEMP/electron-builder.json"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+          AZURE_CODE_SIGNING_NAME: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+
+      - name: Build and publish unsigned Windows release
+        if: steps.winsign.outputs.mode == 'unsigned'
         run: npx electron-builder --win --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
