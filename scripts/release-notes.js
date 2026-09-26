@@ -25,7 +25,7 @@ if (!found || !found.body) {
   process.exit(1);
 }
 if (process.argv[2] === "--title") {
-  process.stdout.write(`${found.name || pkg.version}\n`);
+  process.stdout.write(found.name ? `${pkg.version} ${found.name}\n` : `${pkg.version}\n`);
 } else {
   process.stdout.write(`${found.body}\n`);
 }

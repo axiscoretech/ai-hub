@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.0 Out of luck
+
+- Site pages stay in the renderer sandbox, so a page cannot reach the app's own files.
+- A release is published only after the test suite passes.
+- A Windows build is signed when a code-signing certificate or Azure Trusted Signing is configured.
+
 ## 1.12.0 Emergency
 
 - Service tabs show each site's favicon. A site you add yourself uses its own icon, or the first letter of its name when it has none.

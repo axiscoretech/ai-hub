@@ -34,7 +34,7 @@ base64 -i developer-id-application.p12 | pbcopy
 
 ## Release flow
 
-1. Bump `version` in `package.json` to the next recognizable number, not the next integer. The GitHub release title is the meaning of that number. The changelog heading carries it: `## 1.12.0 Emergency` (112). Later names already queued are `1.13.0 Out of luck` and `1.28.0 Memory`. A hotfix keeps the name and bumps only the patch.
+1. Bump `version` in `package.json` to the next recognizable number, not the next integer. The GitHub release title is that version, then its name: `1.13.0 Out of luck`. The changelog heading is the same words: `## 1.13.0 Out of luck`. Later names already queued are `1.28.0 Memory`. A hotfix keeps the name and bumps only the patch.
 2. Push `master`.
 3. Create and push a tag:
 
