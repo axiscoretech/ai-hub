@@ -7,12 +7,15 @@ const { _electron: electron } = require("playwright");
 
 test("the app starts, isolates partitions, and blocks outside navigation", async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), "ai-hub-smoke-"));
+  const launchArgs = ["."];
+  if (process.env.CI) launchArgs.unshift("--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage");
   const app = await electron.launch({
-    args: ["."],
+    args: launchArgs,
     env: {
       ...process.env,
       AI_HUB_USER_DATA: userData,
       AI_HUB_TEST: "1",
+      ELECTRON_DISABLE_SANDBOX: "1",
     },
   });
   try {
