@@ -1,3 +1,4 @@
+// @ts-check
 const { session, webContents } = require("electron");
 const { buildBlackholeProxyConfig, webrtcIpHandlingPolicy } = require("./wireguard");
 
@@ -43,9 +44,9 @@ function createProxyRouting(options = {}) {
   }
 
   async function applyRoutedProxy() {
-    const accounts = accounts();
-    const targets = await Promise.all(accounts.map((account) => configureAccountProxy(account)));
-    await Promise.all(accounts.map((account, index) => {
+    const routed = accounts();
+    const targets = await Promise.all(routed.map((account) => configureAccountProxy(account)));
+    await Promise.all(routed.map((account, index) => {
       if (shouldKeepConnections(account.partition)) return undefined;
       return targets[index].closeAllConnections().catch(() => {});
     }));
