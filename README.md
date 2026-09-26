@@ -8,7 +8,7 @@
 
 **Все ваши чаты с ИИ в одном окне — на их бесплатных тарифах.**
 
-Без API-ключей. Без покупки токенов. Свой WireGuard только для вкладок хаба.
+Без API-ключей. Без покупки токенов. Свой WireGuard (VPN-туннель) только для вкладок хаба.
 
 ChatGPT · Claude · Gemini · DeepSeek · Grok · Perplexity · Mistral · Qwen · Kimi · OpenClaw
 
