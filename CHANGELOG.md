@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0
 
 - macOS no longer asks for the login password twice when the app opens. Site sessions stay in the app, and a saved tunnel uses the keychain once.
 - Applying a shared Google account opens the service without asking for that password again.
