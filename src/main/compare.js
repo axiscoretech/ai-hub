@@ -1,6 +1,7 @@
 // @ts-check
 const { globalShortcut, clipboard } = require("electron");
 const { handle } = require("./ipc-bind");
+const { clickSendScript, composerStateScript, selectComposerScript } = require("./gather-notes");
 
 const COMPOSER_SELECTOR = "textarea, [contenteditable]";
 
@@ -33,6 +34,35 @@ function createCompare(options = {}) {
   const detachPageView = options.detachPageView || (() => {});
   const switchTab = options.switchTab;
   const acceptedServiceUrl = options.acceptedServiceUrl || (() => null);
+  const stopGather = options.stopGather || (() => {});
+  const setPaneKind = options.setPaneKind || (() => {});
+  const getPaneKind = options.getPaneKind || (() => "");
+  let filled = new Set();
+  let sent = new Set();
+  let filling = false;
+  let fanoutQueued = false;
+  let fillGen = 0;
+  let broadcastFrom = "";
+
+  function resetBroadcast() {
+    fillGen += 1;
+    filled = new Set();
+    sent = new Set();
+    fanoutQueued = false;
+    filling = false;
+    broadcastFrom = "";
+  }
+
+  function publishSide(task, detail) {
+    if (!state.win || state.win.isDestroyed()) return;
+    state.win.webContents.send("compare-status", {
+      open: true,
+      mode: "side",
+      title: task.title,
+      taskId: task.id,
+      detail,
+    });
+  }
 
   function layoutCompare() {
     if (!state.compareOpen || !state.win || state.win.isDestroyed()) return;
@@ -54,6 +84,9 @@ function createCompare(options = {}) {
   }
 
   function closeCompare(options = {}) {
+    resetBroadcast();
+    try { stopGather(); } catch {}
+    try { setPaneKind(""); } catch {}
     if (!state.compareOpen && !state.compareSlots.length) return;
     state.compareOpen = false;
     state.compareFocus = null;
@@ -75,6 +108,7 @@ function createCompare(options = {}) {
     if (isBoardWorkspace()) {
       try { await tasks.setWorkspace("chat"); } catch {}
     }
+    closeCompare({ restore: false });
     for (const slot of state.compareSlots) {
       try { detachPageView(slot.view); } catch {}
     }
@@ -100,11 +134,102 @@ function createCompare(options = {}) {
     }
     state.compareOpen = state.compareSlots.length >= 2;
     if (!state.compareOpen) return { success: false, error: "Couldn't open those services" };
+    setPaneKind("side");
     layoutCompare();
-    if (state.win && !state.win.isDestroyed()) {
-      state.win.webContents.send("compare-status", { open: true, title: task.title, taskId: task.id });
-    }
+    const leadName = task.lead && picks.some((item) => (
+      item.service === task.lead.service && (item.accountId || "default") === (task.lead.accountId || "default")
+    )) ? task.lead.service : "";
+    broadcastFrom = leadName;
+    publishSide(task, "Putting the task in every chat");
+    const missed = await fillAll(task.prompt || task.title || "");
+    const detail = missed.length
+      ? `Couldn't fill ${missed.join(" and ")}`
+      : (leadName ? `Press Send in ${leadName}. The others send too.` : "Press Send in one chat. The others send too.");
+    publishSide(task, detail);
     return { success: true };
+  }
+
+  async function waitForComposer(contents, gen) {
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      if (gen !== fillGen || !contents || contents.isDestroyed()) return false;
+      let loading = false;
+      try { loading = contents.isLoading(); } catch {}
+      if (!loading) {
+        try {
+          const composer = await contents.executeJavaScript(composerStateScript(COMPOSER_SELECTOR), true);
+          if (composer && composer.ready) return true;
+        } catch {}
+      }
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    return false;
+  }
+
+  async function replaceComposer(contents, text, gen = fillGen) {
+    if (!contents || contents.isDestroyed() || !text) return false;
+    if (!(await waitForComposer(contents, gen))) return false;
+    try { contents.focus(); } catch { return false; }
+    let selected = false;
+    try { selected = await contents.executeJavaScript(selectComposerScript(COMPOSER_SELECTOR), true); } catch { selected = false; }
+    if (!selected) return false;
+    try { contents.insertText(text); } catch { return false; }
+    return true;
+  }
+
+  async function clickSend(contents) {
+    if (!contents || contents.isDestroyed()) return false;
+    try { contents.focus(); } catch { return false; }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    let sentClick = false;
+    try { sentClick = await contents.executeJavaScript(clickSendScript(), true); } catch { sentClick = false; }
+    if (sentClick) return true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try { return await contents.executeJavaScript(clickSendScript(), true); } catch { return false; }
+  }
+
+  async function fillAll(text) {
+    const gen = fillGen;
+    filling = true;
+    const missed = [];
+    try {
+      for (const slot of state.compareSlots.slice()) {
+        if (gen !== fillGen || !state.compareOpen) return missed;
+        if (!isViewUsable(slot.view)) {
+          missed.push(slot.service);
+          continue;
+        }
+        const ok = await replaceComposer(slot.view.webContents, text, gen);
+        if (gen !== fillGen) return missed;
+        if (ok) filled.add(slot.service);
+        else missed.push(slot.service);
+      }
+    } finally {
+      if (gen === fillGen) filling = false;
+    }
+    if (gen === fillGen && fanoutQueued) await flushFanout();
+    return missed;
+  }
+
+  async function flushFanout() {
+    if (!state.compareOpen || getPaneKind() !== "side") return;
+    for (const slot of state.compareSlots.slice()) {
+      if (!state.compareOpen || getPaneKind() !== "side") return;
+      if (sent.has(slot.service) || !filled.has(slot.service) || !isViewUsable(slot.view)) continue;
+      sent.add(slot.service);
+      await clickSend(slot.view.webContents);
+    }
+  }
+
+  function noteSend(service) {
+    if (getPaneKind() !== "side" || !state.compareOpen || typeof service !== "string") return;
+    if (!state.compareSlots.some((slot) => slot.service === service)) return;
+    if (broadcastFrom && service !== broadcastFrom) return;
+    if (sent.has(service)) return;
+    sent.add(service);
+    fanoutQueued = true;
+    if (filling) return;
+    void flushFanout();
   }
 
   const FOCUS_COMPOSER_SCRIPT = `(() => {
@@ -136,6 +261,11 @@ function createCompare(options = {}) {
     const status = tasks.list();
     const task = (status.tasks || []).find((item) => item.id === state.compareTaskId);
     if (!task) return { success: false, error: "Unknown task" };
+    if (getPaneKind() === "side") {
+      const missed = await fillAll(task.prompt || task.title || "");
+      if (missed.length) return { success: false, error: `Couldn't fill ${missed.join(" and ")}` };
+      return { success: true };
+    }
     const text = task.prompt || task.title || "";
     const contents = state.compareFocus && !state.compareFocus.isDestroyed()
       ? state.compareFocus
@@ -185,6 +315,7 @@ function createCompare(options = {}) {
     startCompare,
     insertCompareText,
     registerHotkey,
+    noteSend,
   };
 }
 

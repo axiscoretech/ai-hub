@@ -12,11 +12,9 @@ const STREAMS = [
 
 const SKIP_TYPES = new Set(["image", "stylesheet", "script", "font", "media", "ping", "cspReport"]);
 
-function streamEnded(service, details) {
+function streamMatches(service, details) {
   if (!details || typeof details.url !== "string") return false;
   if (SKIP_TYPES.has(details.resourceType)) return false;
-  const status = Number(details.statusCode);
-  if (!Number.isFinite(status) || status < 200 || status >= 400) return false;
   const method = String(details.method || "GET").toUpperCase();
   return STREAMS.some((pattern) => (
     pattern.service === service
@@ -25,7 +23,18 @@ function streamEnded(service, details) {
   ));
 }
 
+function streamEnded(service, details) {
+  if (!streamMatches(service, details)) return false;
+  const status = Number(details.statusCode);
+  return Number.isFinite(status) && status >= 200 && status < 400;
+}
+
+function streamStarted(service, details) {
+  return streamMatches(service, details);
+}
+
 module.exports = {
   STREAMS,
   streamEnded,
+  streamStarted,
 };

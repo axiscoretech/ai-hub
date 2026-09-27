@@ -10,6 +10,35 @@
   let appliedRevision = -1;
   let filter = "all";
   let servicesKey = null;
+  let formOpen = false;
+  const openLeadBoxes = new Set();
+
+  function hasActiveTasks(status) {
+    return (status.tasks || []).some((task) => !task.archivedAt);
+  }
+
+  function renderForm(status) {
+    const form = document.getElementById("board-form");
+    const newTask = document.getElementById("board-new");
+    const cancel = document.getElementById("board-cancel");
+    if (!form || !newTask || !cancel) return;
+    const pinned = !hasActiveTasks(status);
+    const show = formOpen || pinned;
+    form.hidden = !show;
+    newTask.hidden = show;
+    cancel.hidden = pinned;
+  }
+
+  function setFormOpen(open) {
+    formOpen = open;
+    renderForm(tasksState);
+    if (open) {
+      const title = document.getElementById("board-title");
+      if (title) title.focus();
+    } else {
+      showError("");
+    }
+  }
 
   function activeTask(status) {
     const tasks = status.tasks || [];
@@ -30,13 +59,15 @@
 
   function filteredTasks(status) {
     const tasks = status.tasks || [];
+    const active = tasks.filter((task) => !task.archivedAt);
+    const pool = filter === "archive" ? tasks.filter((task) => task.archivedAt) : active;
     if (filter === "doing") {
-      return tasks.filter((task) => task.assignments.some((item) => item.status === "doing"));
+      return pool.filter((task) => task.assignments.some((item) => item.status === "doing"));
     }
     if (filter === "attention") {
-      return tasks.filter((task) => task.assignments.some((item) => item.attention));
+      return pool.filter((task) => task.assignments.some((item) => item.attention));
     }
-    return tasks;
+    return pool;
   }
 
   function showError(message) {
@@ -129,6 +160,7 @@
       label.append(input, document.createTextNode(" " + service));
       box.appendChild(label);
     });
+    syncFormGather();
   }
 
   function renderFilters() {
@@ -145,9 +177,16 @@
     const top = scroller ? scroller.scrollTop : 0;
     const tasks = status.tasks || [];
     const visible = filteredTasks(status);
+    const active = tasks.filter((task) => !task.archivedAt);
     if (!tasks.length) {
+      empty.hidden = true;
+      empty.textContent = "";
+    } else if (filter === "archive" && !visible.length) {
       empty.hidden = false;
-      empty.textContent = "No tasks yet. Add a title, the text to paste, and at least one service.";
+      empty.textContent = "Nothing archived yet.";
+    } else if (!active.length && filter !== "archive") {
+      empty.hidden = false;
+      empty.textContent = "No current tasks. Older ones are in Archive.";
     } else if (!visible.length) {
       empty.hidden = false;
       empty.textContent = "No tasks match this filter.";
@@ -164,6 +203,7 @@
   function renderCard(task, services) {
     const card = document.createElement("article");
     card.className = "board-card";
+    card.dataset.task = task.id;
 
     const top = document.createElement("div");
     top.className = "board-card-top";
@@ -190,6 +230,15 @@
       if (window.electronAPI.compareStart) void run(window.electronAPI.compareStart(task.id));
     });
     actions.append(side, copy, removeTask);
+    if (task.archivedAt) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.textContent = "Restore";
+      restore.addEventListener("click", () => {
+        if (window.electronAPI.tasksRestore) void run(window.electronAPI.tasksRestore(task.id));
+      });
+      actions.replaceChildren(restore, copy, removeTask);
+    }
     top.append(title, actions);
     card.appendChild(top);
 
@@ -199,6 +248,8 @@
       prompt.textContent = task.prompt;
       card.appendChild(prompt);
     }
+
+    if (!task.archivedAt) card.appendChild(renderGather(task));
 
     task.assignments.forEach((assignment) => {
       card.appendChild(renderAssignment(task, assignment));
@@ -232,6 +283,7 @@
   }
 
   function renderAssignment(task, assignment) {
+    const block = document.createElement("div");
     const row = document.createElement("div");
     row.className = "board-row";
 
@@ -273,8 +325,22 @@
       void run(window.electronAPI.tasksRemoveAssignment({ taskId: task.id, service: assignment.service }));
     });
 
-    row.append(dot, name, select, open, remove);
-    return row;
+    const items = [dot, name];
+    if (isLead(task, assignment)) {
+      const badge = document.createElement("span");
+      badge.className = "board-badge";
+      badge.textContent = "Manager";
+      items.push(badge);
+    }
+    row.append(...items, select, open, remove);
+    block.appendChild(row);
+    if (assignment.note) {
+      const note = document.createElement("p");
+      note.className = "board-note";
+      note.textContent = assignment.note;
+      block.appendChild(note);
+    }
+    return block;
   }
 
   async function copyTask(task, button) {
@@ -286,6 +352,150 @@
       button.textContent = "Copy failed";
     }
     setTimeout(() => { button.textContent = "Copy"; }, 1200);
+  }
+
+  function isLead(task, assignment) {
+    return Boolean(task.lead
+      && task.lead.service === assignment.service
+      && (task.lead.accountId || "default") === (assignment.accountId || "default"));
+  }
+
+  function joinNames(names) {
+    if (names.length <= 1) return names.join("");
+    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  }
+
+  function gatherSummary(task, lead) {
+    const others = task.assignments.filter((item) => item !== lead);
+    const workers = others.slice(0, 2).map((item) => item.service);
+    let text = `${joinNames(workers)} ${workers.length === 1 ? "prepares a note" : "prepare notes"}.`;
+    if (workers.length > 1) text += " They compare them once.";
+    text += ` ${lead.service} checks them and writes your answer.`;
+    if (others.length > 2) text += ` ${joinNames(others.slice(2).map((item) => item.service))} ${others.length - 2 === 1 ? "sits" : "sit"} this one out.`;
+    return text;
+  }
+
+  function renderGather(task) {
+    const box = document.createElement("section");
+    box.className = "board-gather";
+    const head = document.createElement("h3");
+    head.textContent = "Gather";
+    box.appendChild(head);
+
+    if (task.assignments.length < 2) {
+      const hint = document.createElement("p");
+      hint.className = "board-gather-summary";
+      hint.textContent = "Add another service below. Gather needs one chat to write the answer and at least one to prepare notes.";
+      box.appendChild(hint);
+      return box;
+    }
+
+    let lead = task.assignments.find((item) => isLead(task, item)) || task.assignments[0];
+
+    const managerRow = document.createElement("label");
+    managerRow.className = "board-gather-row";
+    const managerLabel = document.createElement("span");
+    managerLabel.textContent = "Manager";
+    const manager = document.createElement("select");
+    manager.setAttribute("aria-label", "Manager");
+    task.assignments.forEach((assignment, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = assignment.service;
+      if (assignment === lead) option.selected = true;
+      manager.appendChild(option);
+    });
+    managerRow.append(managerLabel, manager);
+
+    const summary = document.createElement("p");
+    summary.className = "board-gather-summary";
+    summary.textContent = gatherSummary(task, lead);
+
+    manager.addEventListener("change", () => {
+      const next = task.assignments[Number(manager.value)];
+      if (!next) return;
+      lead = next;
+      summary.textContent = gatherSummary(task, lead);
+      if (!window.electronAPI.tasksSetLead) return;
+      void run(window.electronAPI.tasksSetLead({
+        taskId: task.id,
+        service: next.service,
+        accountId: next.accountId || "default",
+      }));
+    });
+
+    const prep = document.createElement("label");
+    prep.className = "board-prep";
+    const prepToggle = document.createElement("input");
+    prepToggle.type = "checkbox";
+    prepToggle.checked = task.prep === true;
+    const prepLabel = document.createElement("span");
+    prepLabel.textContent = "Tell the other chats their notes will be checked";
+    prep.append(prepToggle, prepLabel);
+
+    const prepText = document.createElement("textarea");
+    prepText.className = "board-prep-text";
+    prepText.maxLength = 2000;
+    prepText.value = task.prepText || tasksState.prepDefault || "";
+    prepText.setAttribute("aria-label", "Text added for the other chats");
+    prepText.hidden = !prepToggle.checked;
+    prepText.addEventListener("blur", () => {
+      if (!window.electronAPI.tasksSetPrep) return;
+      void run(window.electronAPI.tasksSetPrep({ taskId: task.id, prep: prepToggle.checked, prepText: prepText.value }));
+    });
+    prepToggle.addEventListener("change", () => {
+      prepText.hidden = !prepToggle.checked;
+      if (!window.electronAPI.tasksSetPrep) return;
+      void run(window.electronAPI.tasksSetPrep({ taskId: task.id, prep: prepToggle.checked }));
+    });
+
+    const leadBox = document.createElement("details");
+    leadBox.className = "board-lead-box";
+    leadBox.open = openLeadBoxes.has(task.id);
+    leadBox.addEventListener("toggle", () => {
+      if (leadBox.open) openLeadBoxes.add(task.id);
+      else openLeadBoxes.delete(task.id);
+    });
+    const leadSummary = document.createElement("summary");
+    leadSummary.textContent = "Manager instruction";
+    const leadText = document.createElement("textarea");
+    leadText.className = "board-prep-text";
+    leadText.maxLength = 2000;
+    leadText.value = task.leadText || tasksState.leadDefault || "";
+    leadText.setAttribute("aria-label", "Instruction for the manager");
+    leadText.addEventListener("blur", () => {
+      if (!window.electronAPI.tasksSetPrep) return;
+      void run(window.electronAPI.tasksSetPrep({ taskId: task.id, leadText: leadText.value }));
+    });
+    leadBox.append(leadSummary, leadText);
+
+    const start = document.createElement("button");
+    start.type = "button";
+    start.className = "board-start";
+    start.textContent = "Start Gather";
+    start.addEventListener("click", () => {
+      startGather(task, lead, prepToggle.checked, prepText.value, leadText.value);
+    });
+
+    box.append(managerRow, summary, prep, prepText, leadBox, start);
+    return box;
+  }
+
+  async function startGather(task, lead, prep, prepText, leadText) {
+    if (!window.electronAPI.gatherStart) return;
+    if (window.electronAPI.tasksSetPrep) {
+      const saved = await run(window.electronAPI.tasksSetPrep({ taskId: task.id, prep, prepText, leadText }));
+      if (!saved || saved.success === false) return;
+    }
+    if (window.electronAPI.tasksSetLead) {
+      const chosen = await run(window.electronAPI.tasksSetLead({
+        taskId: task.id,
+        service: lead.service,
+        accountId: lead.accountId || "default",
+      }));
+      if (!chosen || chosen.success === false) return;
+    }
+    void run(window.electronAPI.gatherStart(task.id));
   }
 
   function render(status) {
@@ -303,12 +513,30 @@
     renderTasksButton(status);
     renderServiceChoices(status.services || []);
     renderFilters();
+    renderForm(status);
     renderCards(status);
     if (open && typeof layoutInset === "function") layoutInset();
   }
 
   function selectedServices() {
     return Array.from(document.querySelectorAll("#board-services input:checked")).map((input) => input.value);
+  }
+
+  function syncFormGather() {
+    const box = document.getElementById("board-form-gather");
+    const select = document.getElementById("board-lead");
+    if (!box || !select) return;
+    const picked = selectedServices();
+    box.hidden = picked.length < 2;
+    const current = select.value;
+    select.replaceChildren();
+    picked.forEach((service) => {
+      const option = document.createElement("option");
+      option.value = service;
+      option.textContent = service;
+      select.appendChild(option);
+    });
+    if (picked.includes(current)) select.value = current;
   }
 
   function bind() {
@@ -331,6 +559,9 @@
       const title = document.getElementById("board-title").value;
       const prompt = document.getElementById("board-prompt").value;
       const services = selectedServices();
+      const gathering = services.length >= 2;
+      const prep = gathering && document.getElementById("board-prep").checked;
+      const lead = gathering ? document.getElementById("board-lead").value : "";
       if (!String(title || "").trim()) {
         showError("Title is required");
         return;
@@ -339,17 +570,28 @@
         showError("Choose at least one service");
         return;
       }
-      void run(window.electronAPI.tasksCreate({ title, prompt, services })).then((result) => {
+      void run(window.electronAPI.tasksCreate({ title, prompt, services, prep, lead })).then((result) => {
         if (!result || !result.success) return;
         document.getElementById("board-title").value = "";
         document.getElementById("board-prompt").value = "";
+        document.getElementById("board-prep").checked = true;
         document.querySelectorAll("#board-services input").forEach((input) => { input.checked = false; });
+        syncFormGather();
+        setFormOpen(false);
       });
     });
+
+    document.getElementById("board-services").addEventListener("change", syncFormGather);
+    document.getElementById("board-new").addEventListener("click", () => setFormOpen(true));
+    document.getElementById("board-cancel").addEventListener("click", () => setFormOpen(false));
 
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.repeat || tasksState.workspace !== "board") return;
       event.preventDefault();
+      if (formOpen && hasActiveTasks(tasksState)) {
+        setFormOpen(false);
+        return;
+      }
       void run(window.electronAPI.tasksSetWorkspace("chat"));
     });
   }
@@ -370,6 +612,7 @@
       ["all", "All"],
       ["doing", "Doing"],
       ["attention", "Needs a look"],
+      ["archive", "Archive"],
     ].forEach(([value, label]) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -377,7 +620,15 @@
       button.textContent = label;
       filters.appendChild(button);
     });
-    head.append(heading, filters);
+    const newTask = document.createElement("button");
+    newTask.type = "button";
+    newTask.id = "board-new";
+    newTask.className = "board-new";
+    newTask.textContent = "+ New task";
+    const side = document.createElement("div");
+    side.className = "board-head-side";
+    side.append(filters, newTask);
+    head.append(heading, side);
 
     const empty = document.createElement("p");
     empty.id = "board-empty";
@@ -391,8 +642,17 @@
     const form = document.createElement("form");
     form.id = "board-form";
     form.className = "board-form";
+    form.hidden = true;
+    const formHead = document.createElement("div");
+    formHead.className = "board-form-head";
     const formTitle = document.createElement("h2");
     formTitle.textContent = "New task";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.id = "board-cancel";
+    cancel.className = "board-cancel";
+    cancel.textContent = "Cancel";
+    formHead.append(formTitle, cancel);
     const title = document.createElement("input");
     title.id = "board-title";
     title.type = "text";
@@ -407,6 +667,30 @@
     const services = document.createElement("div");
     services.id = "board-services";
     services.className = "board-services";
+    const formGather = document.createElement("div");
+    formGather.id = "board-form-gather";
+    formGather.className = "board-gather";
+    formGather.hidden = true;
+    const formGatherHead = document.createElement("h3");
+    formGatherHead.textContent = "For Gather";
+    const leadRow = document.createElement("label");
+    leadRow.className = "board-gather-row";
+    const leadLabel = document.createElement("span");
+    leadLabel.textContent = "Manager";
+    const leadSelect = document.createElement("select");
+    leadSelect.id = "board-lead";
+    leadSelect.setAttribute("aria-label", "Manager");
+    leadRow.append(leadLabel, leadSelect);
+    const prepLabel = document.createElement("label");
+    prepLabel.className = "board-prep";
+    const prepInput = document.createElement("input");
+    prepInput.id = "board-prep";
+    prepInput.type = "checkbox";
+    prepInput.checked = true;
+    const prepText = document.createElement("span");
+    prepText.textContent = "Tell the other chats their notes will be checked";
+    prepLabel.append(prepInput, prepText);
+    formGather.append(formGatherHead, leadRow, prepLabel);
     const error = document.createElement("p");
     error.id = "board-error";
     error.className = "board-error";
@@ -414,7 +698,7 @@
     submit.type = "submit";
     submit.className = "board-add";
     submit.textContent = "Add task";
-    form.append(formTitle, title, prompt, services, error, submit);
+    form.append(formHead, title, prompt, services, formGather, error, submit);
 
     wrap.append(head, form, empty, list);
     root.appendChild(wrap);

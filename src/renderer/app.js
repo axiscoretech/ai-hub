@@ -373,8 +373,17 @@ function initCompare() {
   if (!window.electronAPI.onCompare) return;
   window.electronAPI.onCompare((status) => {
     const title = document.getElementById("compare-title");
+    const detail = document.getElementById("compare-detail");
+    const open = Boolean(status && status.open);
     if (title) title.textContent = status && status.title ? status.title : "Compare";
-    setBar("compare-bar", Boolean(status && status.open));
+    if (detail) {
+      const text = status && status.open && status.detail ? status.detail : "";
+      detail.textContent = text;
+      detail.hidden = !text;
+    }
+    const bar = document.getElementById("compare-bar");
+    if (bar && bar.hidden === !open) return;
+    setBar("compare-bar", open);
   });
   document.getElementById("compare-insert").addEventListener("click", () => {
     void window.electronAPI.compareInsert();

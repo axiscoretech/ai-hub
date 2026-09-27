@@ -43,13 +43,14 @@ AI Hub opens the real websites, so you use each service the way it is offered to
 - **Separate from your browser** — AI chats get their own dock icon and window
 - **Live tabs** — switching services does not reload the page. Logins persist between launches
 - **Isolated sessions** — stay logged in to every service at once. A service can hold more than one account (say, work and personal), each with its own login and its own tunnel or direct route
-- **Compare** — put two or three chats side by side, insert the task text into the focused chat without sending it, and keep the task board
+- **Compare** — put two or three chats side by side, put the task in every one, and send the rest when you press Send in one chat
+- **Gather** — the selected chats receive the task, compare notes, and hand them to the main chat. That chat checks them and writes the answer. A checkbox adds a line that the notes will be reviewed, and you can edit that line
 - **WireGuard** — send the hub tabs you choose through a WireGuard config. Other services can stay on a direct connection. This does not change the rest of your Mac, PC, or Linux machine
 - **Your own sites** — add an https address when a service is missing from the list. Hide a tab from the flag panel when you do not want it
 - **Theme** — dark, light, or match the system
 - **OpenClaw** — a tab for a local OpenClaw gateway. Installing or updating it asks first and uses the official source
 
-The app opens the real websites. It does not sell credits, and it does not send a prompt into those sites for you.
+The app opens the real websites. It does not sell credits. In side by side you press Send once, and the other chats follow. Gather sends the task itself.
 
 ---
 
@@ -152,7 +153,7 @@ The service names are tabs. The buttons on the right are icons:
 
 ![Compare board with two tasks](assets/screenshot-compare.png)
 
-**Principle:** AI Hub does not send a prompt into the sites for you.
+**Principle:** in side by side you press Send once, in the chat in front of you. The other chats send after it. Gather sends the task itself.
 
 Compare is a board in the shell, not a second account system.
 
@@ -167,7 +168,9 @@ An amber dot means the background tab's title changed while that assignment was 
 
 You can keep up to 50 tasks. Delete a task from its card. Removing the last service on a task is refused, so a task always points at somewhere.
 
-**Insert**, while the chats are side by side, focuses the message box of the chat you clicked and types the task text there. That includes the ProseMirror editors used by Claude and ChatGPT. It does not press Send.
+**Side by side** types the task into every open chat. Pressing Send in one of them, including the manager's chat, sends the others. **Insert** types the text again when a box stayed empty. You press the site's button in the first chat.
+
+**Gather** is its own block on any task card with two or more services. Choose the **Manager**, the chat that writes the final answer. The line under it says which chats prepare notes. **Start Gather** sends the task to those chats. When more than one of them is working, they receive each other's notes and revise their own. The manager checks them and writes your answer. **Tell the other chats their notes will be checked** puts an opening line before the task for those chats: the manager will check their reply. Edit it in the block. The manager gets its role first, then the task and the notes. Edit that under **Manager instruction**. The new task form sets the manager and this checkbox too. **Back** stops the mode.
 
 ---
 

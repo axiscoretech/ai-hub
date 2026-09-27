@@ -19,7 +19,7 @@ const { createWireguard } = require("./wireguard");
 const { createProxyRouting } = require("./proxy-routing");
 const { createTasks } = require("./tasks");
 const { createServices } = require("./services");
-const { streamEnded } = require("./stream-end");
+const { streamEnded, streamStarted } = require("./stream-end");
 const { GOOGLE_PARTITION } = require("./google");
 const {
   inspectOpenClaw,
@@ -39,6 +39,7 @@ const { createTheme } = require("./theme");
 const { createGoogleSession } = require("./google-session");
 const { createOpenClawView } = require("./openclaw-view");
 const { createCompare } = require("./compare");
+const { createGather } = require("./gather");
 const { registerMainIpc } = require("./ipc-handlers");
 
 let win;
@@ -171,6 +172,11 @@ let compareSlots: any[] = [];
 let compareFocus = null;
 let compareTaskId = null;
 let registeredHotkey = "";
+let paneKind = "";
+let gatherStop = () => {};
+let gatherLayout = () => {};
+let gatherNoteStream = (_name: string) => {};
+let compareFanout = (_name: string) => {};
 
 function partitionForTab(name) {
   return services.partitionFor(name) || `persist:${name}`;
@@ -233,8 +239,15 @@ function hookPartition(partition, name) {
     }
     item.setSavePath(filePath);
   });
+  target.webRequest.onBeforeRequest({ urls: ["https://*/*", "http://*/*"] }, (details, callback) => {
+    try {
+      if (streamStarted(name, details)) compareFanout(name);
+    } catch {}
+    if (typeof callback === "function") callback({});
+  });
   target.webRequest.onCompleted({ urls: ["https://*/*", "http://*/*"] }, (details) => {
     if (!streamEnded(name, details)) return;
+    gatherNoteStream(name);
     if (!shouldNoteTaskActivity(name)) return;
     void tasks.noteActivity(name, services.activeAccountId(name)).then((result) => {
       if (result && result.noted) notifyReply(name);
@@ -292,6 +305,7 @@ const {
   startCompare,
   insertCompareText,
   registerHotkey,
+  noteSend,
 } = createCompare({
   window: () => win,
   views: () => views,
@@ -319,7 +333,44 @@ const {
   detachPageView,
   switchTab,
   acceptedServiceUrl,
+  stopGather: () => gatherStop(),
+  setPaneKind: (value) => { paneKind = value; },
+  getPaneKind: () => paneKind,
 });
+compareFanout = (name) => noteSend(name);
+
+const gather = createGather({
+  window: () => win,
+  views: () => views,
+  tabs: () => tabs,
+  getTopBarHeight: () => topBarHeight,
+  getCompareOpen: () => compareOpen,
+  setCompareOpen: (value) => { compareOpen = value; },
+  getCompareSlots: () => compareSlots,
+  setCompareSlots: (value) => { compareSlots = value; },
+  setCompareFocus: (value) => { compareFocus = value; },
+  setCompareTaskId: (value) => { compareTaskId = value; },
+  tasks,
+  services,
+  isViewUsable,
+  isBoardWorkspace,
+  takeAccountView,
+  createTab,
+  showPageView,
+  hideOtherPageViews,
+  detachPageView,
+  acceptedServiceUrl,
+  closePanes: () => closeCompare({ restore: false }),
+  setPaneKind: (value) => { paneKind = value; },
+});
+gatherStop = () => gather.stop();
+gatherLayout = () => gather.layout();
+gatherNoteStream = (name) => gather.noteStream(name);
+
+function layoutPanes() {
+  if (paneKind === "gather") gatherLayout();
+  else layoutCompare();
+}
 
 // ── Window ──────────────────────────────────────────────────────────────────
 
@@ -358,7 +409,7 @@ function createWindow() {
 
   win.on("resize", () => {
     if (compareOpen) {
-      layoutCompare();
+      layoutPanes();
       return;
     }
     if (isBoardWorkspace()) return;
@@ -1105,7 +1156,7 @@ registerMainIpc({
   OPENCLAW_TAB,
   switchTab,
   handleSwitchTab,
-  layoutCompare,
+  layoutCompare: layoutPanes,
   isBoardWorkspace,
   isViewUsable,
   resizeView,

@@ -263,6 +263,18 @@ function registerMainIpc(live) {
     try { return await live.tasks.setStatus(payload); } catch (err) { return live.taskIpcError(err); }
   });
 
+  handle("tasks-set-lead", async (_event, payload) => {
+    try { return await live.tasks.setLead(payload); } catch (err) { return live.taskIpcError(err); }
+  });
+
+  handle("tasks-set-prep", async (_event, payload) => {
+    try { return await live.tasks.setPrep(payload); } catch (err) { return live.taskIpcError(err); }
+  });
+
+  handle("tasks-restore", async (_event, id) => {
+    try { return await live.tasks.restore(id); } catch (err) { return live.taskIpcError(err); }
+  });
+
   handle("tasks-add-assignment", async (_event, payload) => {
     try { return await live.tasks.addAssignment(payload); } catch (err) { return live.taskIpcError(err); }
   });

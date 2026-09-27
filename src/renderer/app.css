@@ -194,6 +194,16 @@ body[data-theme="light"] #tunnel-reconnect {
   font-size: 12px;
   -webkit-app-region: no-drag;
 }
+#compare-title { flex-shrink: 0; font-weight: 650; }
+#compare-detail {
+  flex: 1;
+  min-width: 0;
+  color: #a8a8a8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#compare-detail[hidden] { display: none; }
 #find-bar[hidden], #compare-bar[hidden], #update-bar[hidden], #oc-update-bar[hidden] { display: none; }
 #find-bar button, #compare-bar button, #update-bar button, #oc-update-bar button, #account-add {
   font: inherit;
@@ -212,6 +222,7 @@ body[data-theme="light"] #find-bar,
 body[data-theme="light"] #compare-bar,
 body[data-theme="light"] #update-bar,
 body[data-theme="light"] #oc-update-bar { background: #fff; color: #1f2937; }
+body[data-theme="light"] #compare-detail { color: #64748b; }
 body[data-theme="light"] #find-bar button,
 body[data-theme="light"] #compare-bar button,
 body[data-theme="light"] #update-bar button,

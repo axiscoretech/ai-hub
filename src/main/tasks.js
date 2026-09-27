@@ -1,10 +1,14 @@
+const { DEFAULT_PREP, DEFAULT_LEAD } = require("./gather-notes");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
 const MAX_TASKS = 50;
+const ACTIVE_KEEP = 5;
 const MAX_TITLE_LENGTH = 120;
 const MAX_PROMPT_LENGTH = 8000;
+const MAX_NOTE_LENGTH = 12000;
+const MAX_PREP_LENGTH = 2000;
 const MAX_URL_LENGTH = 4096;
 const TASK_STATUSES = ["queued", "doing", "ready", "done"];
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -50,6 +54,26 @@ function sanitizePrompt(value) {
   return { ok: true, value: cleaned };
 }
 
+function sanitizeNote(value) {
+  if (typeof value !== "string") return "";
+  const cleaned = value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!cleaned) return "";
+  return cleaned.length > MAX_NOTE_LENGTH ? cleaned.slice(0, MAX_NOTE_LENGTH) : cleaned;
+}
+
+function sanitizePrep(value) {
+  if (typeof value !== "string") return "";
+  const cleaned = value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!cleaned) return "";
+  return cleaned.length > MAX_PREP_LENGTH ? cleaned.slice(0, MAX_PREP_LENGTH) : cleaned;
+}
+
 function sanitizeStoredUrl(value) {
   if (typeof value !== "string" || !value.trim()) return "";
   const trimmed = value.trim();
@@ -84,6 +108,7 @@ function createTasks(options = {}) {
   let capture = null;
   let revision = 0;
   let loaded = false;
+  let pruned = false;
   let chain = Promise.resolve();
 
   function known(service) {
@@ -143,6 +168,7 @@ function createTasks(options = {}) {
       status: entry.status,
       url: entry.url || null,
       attention: Boolean(entry.attention),
+      note: entry.note || "",
       updatedAt: entry.updatedAt,
     };
   }
@@ -154,6 +180,11 @@ function createTasks(options = {}) {
       prompt: entry.prompt,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
+      lead: entry.lead ? { service: entry.lead.service, accountId: entry.lead.accountId || "default" } : null,
+      prep: entry.prep === true,
+      prepText: entry.prepText || "",
+      leadText: entry.leadText || "",
+      archivedAt: entry.archivedAt || null,
       assignments: entry.assignments.map(cloneAssignment),
     };
   }
@@ -165,6 +196,8 @@ function createTasks(options = {}) {
       lastService,
       capture: capture ? { taskId: capture.taskId, service: capture.service, accountId: capture.accountId || "default" } : null,
       services: knownServices(),
+      prepDefault: DEFAULT_PREP,
+      leadDefault: DEFAULT_LEAD,
       tasks: tasks.map(cloneTask),
     };
   }
@@ -258,6 +291,7 @@ function createTasks(options = {}) {
       status,
       url,
       attention: entry.attention === true,
+      note: sanitizeNote(entry.note),
       updatedAt: titleStamp,
     };
   }
@@ -274,12 +308,26 @@ function createTasks(options = {}) {
     if (!assignments.length) return null;
     const createdAt = typeof entry.createdAt === "string" && entry.createdAt ? entry.createdAt : nowIso();
     const updatedAt = typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : createdAt;
+    let lead = null;
+    const storedLead = entry.lead && typeof entry.lead === "object" ? entry.lead : null;
+    if (storedLead && known(storedLead.service)) {
+      const accountId = typeof storedLead.accountId === "string" && storedLead.accountId.trim()
+        ? storedLead.accountId.trim().slice(0, 80)
+        : "default";
+      const match = assignments.find((item) => item.service === storedLead.service && item.accountId === accountId);
+      if (match) lead = { service: match.service, accountId: match.accountId };
+    }
     return {
       id: entry.id,
       title: title.value,
       prompt: prompt.value,
       createdAt,
       updatedAt,
+      lead,
+      prep: entry.prep === true,
+      prepText: sanitizePrep(entry.prepText),
+      leadText: sanitizePrep(entry.leadText),
+      archivedAt: typeof entry.archivedAt === "string" && entry.archivedAt ? entry.archivedAt : null,
       assignments,
     };
   }
@@ -347,21 +395,64 @@ function createTasks(options = {}) {
       if (!services.ok || !services.services) return fail(services.error || "Choose at least one service");
       if (tasks.length >= MAX_TASKS) return fail("You can keep up to 50 tasks");
       const stamp = nowIso();
-      tasks.push({
+      const created = {
         id: crypto.randomUUID(),
         title: title.value,
         prompt: prompt.value,
         createdAt: stamp,
         updatedAt: stamp,
-        assignments: services.services.map((item) => ({
-          service: item.service,
-          accountId: item.accountId,
-          status: "queued",
-          url: null,
-          attention: false,
-          updatedAt: stamp,
-        })),
-      });
+        lead: null,
+        prep: body.prep === true,
+        prepText: sanitizePrep(body.prepText),
+        leadText: sanitizePrep(body.leadText),
+        archivedAt: null,
+        assignments: services.services.map((item) => {
+          return {
+            service: item.service,
+            accountId: item.accountId,
+            status: "queued",
+            url: null,
+            attention: false,
+            note: "",
+            updatedAt: stamp,
+          };
+        }),
+      };
+      const leadName = typeof body.lead === "string" ? body.lead : "";
+      const leadMatch = created.assignments.find((item) => item.service === leadName);
+      tasks.push(leadMatch
+        ? { ...created, lead: { service: leadMatch.service, accountId: leadMatch.accountId || "default" } }
+        : created);
+      archiveIdle(created.id);
+      return ok();
+    });
+  }
+
+  function archiveIdle(keepId) {
+    const idle = [];
+    for (const task of tasks) {
+      if (task.archivedAt || task.id === keepId) continue;
+      if (task.assignments.some((item) => item.status === "doing")) continue;
+      idle.push(task);
+    }
+    const room = keepId ? Math.max(0, ACTIVE_KEEP - 1) : ACTIVE_KEEP;
+    if (idle.length <= room) return false;
+    const stamp = nowIso();
+    idle.slice(0, idle.length - room).forEach((task) => {
+      task.archivedAt = stamp;
+    });
+    return true;
+  }
+
+  function restore(id) {
+    return enqueue(() => {
+      load();
+      const task = findTask(id);
+      if (!task) return fail("Unknown task");
+      if (!task.archivedAt) return unchanged();
+      task.archivedAt = null;
+      task.updatedAt = nowIso();
+      archiveIdle(task.id);
       return ok();
     });
   }
@@ -438,6 +529,7 @@ function createTasks(options = {}) {
         status: "queued",
         url: null,
         attention: false,
+        note: "",
         updatedAt: stamp,
       });
       task.updatedAt = stamp;
@@ -457,6 +549,10 @@ function createTasks(options = {}) {
       }
       if (task.assignments.length <= 1) return fail("A task needs at least one service");
       task.assignments = task.assignments.filter((item) => !sameAssignment(item, body.service, accountId));
+      const lead = task.lead;
+      if (lead && !task.assignments.some((item) => item.service === lead.service && item.accountId === lead.accountId)) {
+        task.lead = null;
+      }
       if (capture && capture.taskId === task.id && capture.service === body.service && (!accountId || capture.accountId === accountId)) {
         capture = null;
       }
@@ -500,6 +596,90 @@ function createTasks(options = {}) {
       load();
       if (!capture) return unchanged();
       capture = null;
+      return ok();
+    });
+  }
+
+  function setPrep(payload) {
+    return enqueue(() => {
+      load();
+      const body = payload && typeof payload === "object" ? payload : {};
+      const task = findTask(body.taskId);
+      if (!task) return fail("Unknown task");
+      const prep = body.prep === undefined ? task.prep : body.prep === true;
+      const prepText = body.prepText === undefined ? task.prepText : sanitizePrep(body.prepText);
+      const leadText = body.leadText === undefined ? (task.leadText || "") : sanitizePrep(body.leadText);
+      if (task.prep === prep && task.prepText === prepText && (task.leadText || "") === leadText) return unchanged();
+      task.prep = prep;
+      task.prepText = prepText;
+      task.leadText = leadText;
+      task.updatedAt = nowIso();
+      return ok();
+    });
+  }
+
+  function setLead(payload) {
+    return enqueue(() => {
+      load();
+      const body = payload && typeof payload === "object" ? payload : {};
+      const task = findTask(body.taskId);
+      if (!task) return fail("Unknown task");
+      const assignment = findAssignment(task, body.service, body.accountId || "");
+      if (!assignment) return fail("Unknown service");
+      const next = { service: assignment.service, accountId: assignment.accountId || "default" };
+      if (task.lead && task.lead.service === next.service && task.lead.accountId === next.accountId) return unchanged();
+      task.lead = next;
+      task.updatedAt = nowIso();
+      return ok();
+    });
+  }
+
+  function setNote(payload) {
+    return enqueue(() => {
+      load();
+      const body = payload && typeof payload === "object" ? payload : {};
+      const task = findTask(body.taskId);
+      if (!task) return fail("Unknown task");
+      const assignment = findAssignment(task, body.service, body.accountId || "");
+      if (!assignment) return fail("Unknown service");
+      const note = sanitizeNote(body.note);
+      const stamp = nowIso();
+      const nextStatus = note
+        ? ((assignment.status === "queued" || assignment.status === "doing") ? "ready" : assignment.status)
+        : (assignment.status === "ready" ? "doing" : assignment.status);
+      if (assignment.note === note && assignment.status === nextStatus) return unchanged();
+      assignment.note = note;
+      assignment.status = nextStatus;
+      if (note) assignment.attention = false;
+      assignment.updatedAt = stamp;
+      task.updatedAt = stamp;
+      return ok();
+    });
+  }
+
+  function clearNotes(payload) {
+    return enqueue(() => {
+      load();
+      const body = payload && typeof payload === "object" ? payload : {};
+      const task = findTask(body.taskId);
+      if (!task) return fail("Unknown task");
+      const keys = Array.isArray(body.services) ? body.services : [];
+      let changed = false;
+      const stamp = nowIso();
+      for (const assignment of task.assignments) {
+        const match = keys.some((item) => (
+          item
+          && item.service === assignment.service
+          && (item.accountId || "default") === (assignment.accountId || "default")
+        ));
+        if (!match || !assignment.note) continue;
+        assignment.note = "";
+        if (assignment.status === "ready") assignment.status = "doing";
+        assignment.updatedAt = stamp;
+        changed = true;
+      }
+      if (!changed) return unchanged();
+      task.updatedAt = stamp;
       return ok();
     });
   }
@@ -581,6 +761,10 @@ function createTasks(options = {}) {
   return {
     list() {
       load();
+      if (!pruned) {
+        pruned = true;
+        if (archiveIdle(null)) save();
+      }
       return snapshot();
     },
     status() {
@@ -588,12 +772,17 @@ function createTasks(options = {}) {
       return snapshot();
     },
     create,
+    restore,
     update,
     delete: remove,
     setStatus,
     addAssignment,
     removeAssignment,
     open,
+    setLead,
+    setPrep,
+    setNote,
+    clearNotes,
     setWorkspace,
     clearCapture,
     noteActivity,
@@ -607,10 +796,13 @@ module.exports = {
   canTransition,
   sanitizeTitle,
   sanitizePrompt,
+  sanitizeNote,
   sanitizeStoredUrl,
   TASK_STATUSES,
   MAX_TASKS,
   MAX_TITLE_LENGTH,
   MAX_PROMPT_LENGTH,
+  MAX_NOTE_LENGTH,
+  MAX_PREP_LENGTH,
   MAX_URL_LENGTH,
 };

@@ -67,6 +67,10 @@ test("create task", async (t) => {
   assert.equal(task.assignments[0].status, "queued");
   assert.equal(task.assignments[0].url, null);
   assert.equal(task.assignments[0].attention, false);
+  assert.equal(task.assignments[0].note, "");
+  assert.equal(task.lead, null);
+  assert.equal(task.prep, false);
+  assert.equal(task.prepText, "");
   assert.ok(task.createdAt);
   assert.ok(task.updatedAt);
 });
@@ -395,6 +399,87 @@ test("reloading the store drops capture and keeps the saved url", async (t) => {
   assert.equal(noted.status.revision, status.revision);
 });
 
+test("main chat and notes stay with the task", async (t) => {
+  const ctx = makeApi();
+  t.after(() => ctx.cleanup());
+  const created = await ctx.api.create({ title: "Brief", prompt: "p", services: ["ChatGPT", "Claude"] });
+  const id = created.status.tasks[0].id;
+  const missing = await ctx.api.setLead({ taskId: id, service: "OpenClaw" });
+  assert.equal(missing.success, false);
+  const lead = await ctx.api.setLead({ taskId: id, service: "ChatGPT" });
+  assert.equal(lead.success, true);
+  assert.deepEqual(lead.status.tasks[0].lead, { service: "ChatGPT", accountId: "default" });
+  const again = await ctx.api.setLead({ taskId: id, service: "ChatGPT" });
+  assert.equal(again.status.revision, lead.status.revision);
+  const noted = await ctx.api.setNote({ taskId: id, service: "Claude", note: "Line\u0000 one" });
+  assert.equal(noted.success, true);
+  assert.equal(assignment(noted.status, id, "Claude").note, "Line one");
+  assert.equal(assignment(noted.status, id, "Claude").status, "ready");
+  const removed = await ctx.api.removeAssignment({ taskId: id, service: "ChatGPT" });
+  assert.equal(removed.status.tasks[0].lead, null);
+
+  const reloaded = createTasks({
+    getUserDataPath: () => ctx.dir,
+    isKnownService: (name) => KNOWN.has(name),
+    isServiceUrl: (service, url) => {
+      try {
+        return Boolean(HOSTS[service] && HOSTS[service].has(new URL(url).hostname));
+      } catch {
+        return false;
+      }
+    },
+    listServices: () => ["ChatGPT", "Claude", "OpenClaw"],
+  });
+  assert.equal(assignment(reloaded.list(), id, "Claude").note, "Line one");
+});
+
+test("a new task can name its manager", async (t) => {
+  const ctx = makeApi();
+  t.after(() => ctx.cleanup());
+  const created = await ctx.api.create({ title: "Lead", prompt: "p", services: ["ChatGPT", "Claude"], lead: "Claude" });
+  assert.deepEqual(created.status.tasks[0].lead, { service: "Claude", accountId: "default" });
+  const stray = await ctx.api.create({ title: "Stray", prompt: "p", services: ["ChatGPT", "Claude"], lead: "OpenClaw" });
+  assert.equal(stray.status.tasks.find((task) => task.title === "Stray").lead, null);
+});
+
+test("prep note is stored and can be edited", async (t) => {
+  const ctx = makeApi();
+  t.after(() => ctx.cleanup());
+  const created = await ctx.api.create({
+    title: "Prep",
+    prompt: "Do the thing",
+    services: ["ChatGPT", "Claude"],
+    prep: true,
+  });
+  const id = created.status.tasks[0].id;
+  assert.equal(created.status.tasks[0].prep, true);
+  assert.equal(created.status.tasks[0].prepText, "");
+  assert.ok(created.status.prepDefault.includes("manager model"));
+  assert.ok(created.status.leadDefault.startsWith("You are the manager."));
+  const lead = await ctx.api.setPrep({ taskId: created.status.tasks[0].id, leadText: "Be brief." });
+  assert.equal(lead.status.tasks[0].leadText, "Be brief.");
+  assert.equal(lead.status.tasks[0].prep, true);
+  const edited = await ctx.api.setPrep({ taskId: id, prep: true, prepText: "Check this\u0000 carefully" });
+  assert.equal(edited.status.tasks[0].prepText, "Check this carefully");
+  const off = await ctx.api.setPrep({ taskId: id, prep: false });
+  assert.equal(off.status.tasks[0].prep, false);
+  assert.equal(off.status.tasks[0].prepText, "Check this carefully");
+  const huge = await ctx.api.setPrep({ taskId: id, prep: true, prepText: "p".repeat(2001) });
+  assert.equal(huge.status.tasks[0].prepText.length, 2000);
+});
+
+test("a note is truncated and clearing it returns ready to doing", async (t) => {
+  const ctx = makeApi();
+  t.after(() => ctx.cleanup());
+  const created = await ctx.api.create({ title: "Long note", prompt: "p", services: ["Claude"] });
+  const id = created.status.tasks[0].id;
+  const noted = await ctx.api.setNote({ taskId: id, service: "Claude", note: "x".repeat(12001) });
+  assert.equal(assignment(noted.status, id, "Claude").note.length, 12000);
+  const cleared = await ctx.api.clearNotes({ taskId: id, services: [{ service: "Claude", accountId: "default" }] });
+  assert.equal(assignment(cleared.status, id, "Claude").note, "");
+  assert.equal(assignment(cleared.status, id, "Claude").status, "doing");
+});
+
 test("very long urls are rejected", async (t) => {
   const ctx = makeApi();
   t.after(() => ctx.cleanup());
@@ -408,4 +493,31 @@ test("very long urls are rejected", async (t) => {
   assert.equal(rejected.error, "URL is too long");
   assert.equal(assignment(rejected.status, id, "ChatGPT").url, null);
   assert.equal(rejected.status.revision, before);
+});
+
+test("idle tasks beyond the latest few are archived", async (t) => {
+  const ctx = makeApi();
+  t.after(() => ctx.cleanup());
+  const ids = [];
+  for (let i = 0; i < 6; i += 1) {
+    const created = await ctx.api.create({ title: `Task ${i}`, prompt: "p", services: ["ChatGPT"] });
+    assert.equal(created.success, true);
+    ids.push(created.status.tasks.find((task) => task.title === `Task ${i}`).id);
+  }
+  const status = ctx.api.status();
+  assert.ok(status.tasks.find((task) => task.id === ids[0]).archivedAt);
+  assert.equal(status.tasks.find((task) => task.id === ids[5]).archivedAt, null);
+
+  const busy = await ctx.api.create({ title: "Busy", prompt: "p", services: ["Claude"] });
+  const busyId = busy.status.tasks.find((task) => task.title === "Busy").id;
+  await ctx.api.setStatus({ taskId: busyId, service: "Claude", status: "doing" });
+  for (let i = 0; i < 6; i += 1) {
+    const next = await ctx.api.create({ title: `Later ${i}`, prompt: "p", services: ["ChatGPT"] });
+    assert.equal(next.success, true);
+  }
+  assert.equal(ctx.api.status().tasks.find((task) => task.id === busyId).archivedAt, null);
+
+  const restored = await ctx.api.restore(ids[0]);
+  assert.equal(restored.success, true);
+  assert.equal(restored.status.tasks.find((task) => task.id === ids[0]).archivedAt, null);
 });

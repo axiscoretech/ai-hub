@@ -4,7 +4,7 @@ const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createServices, OPENCLAW_ID } = require("../out/main/services");
-const { streamEnded } = require("../out/main/stream-end");
+const { streamEnded, streamStarted } = require("../out/main/stream-end");
 
 function makeApi() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-hub-services-"));
@@ -121,6 +121,16 @@ test("stream end matches a known completion and ignores page loads", () => {
     url: "https://claude.ai/api/organizations/org/chat_conversations/chat/completion",
     method: "POST",
     statusCode: 200,
+  }), false);
+  assert.equal(streamStarted("Claude", {
+    url: "https://claude.ai/api/organizations/org/chat_conversations/chat/completion",
+    method: "POST",
+    resourceType: "xhr",
+  }), true);
+  assert.equal(streamStarted("Claude", {
+    url: "https://claude.ai/",
+    method: "GET",
+    resourceType: "mainFrame",
   }), false);
 });
 
