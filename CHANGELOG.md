@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.28.0 Memory
+
+- A marker on the right shows how far down the chat you are. The site's own scroll bars no longer frame the window, and the message box stays on screen.
+- Search and the sidebar toggle in ChatGPT receive clicks.
+- Choosing an account from the Account menu no longer crashes the app.
+
 ## 1.13.0 Out of luck
 
 - Site pages stay in the renderer sandbox, so a page cannot reach the app's own files.
