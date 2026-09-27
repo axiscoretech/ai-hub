@@ -246,6 +246,8 @@ npm test   # доска, WireGuard, сервисы и проверка запу�
 
 ## Для разработчиков
 
+Ошибки и идеи — через issues. Как собрать изменение и что не класть в отчёт: [CONTRIBUTING.md](CONTRIBUTING.md). Уязвимости: [SECURITY.md](SECURITY.md). Правила общения: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## Сборка
 
 ```bash

@@ -246,6 +246,8 @@ npm test   # board, WireGuard, services, and an Electron smoke check
 
 ## For Developers
 
+Bugs and ideas go through issues. How to build a change, and what not to put in a report: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities: [SECURITY.md](SECURITY.md). How to treat each other: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## Build
 
 ```bash
