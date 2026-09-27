@@ -2,6 +2,7 @@
 
 html, body {
   height: 100%;
+  overflow: hidden;
   color-scheme: dark;
   -webkit-app-region: no-drag;
 }
@@ -266,6 +267,26 @@ body[data-theme="light"] #spellcheck-input {
   min-width: 0;
 }
 #tabs::-webkit-scrollbar { display: none; }
+
+#page-scroll {
+  position: fixed;
+  top: var(--shell-inset, 60px);
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 30;
+}
+#page-scroll-thumb {
+  position: absolute;
+  left: 3px;
+  width: 8px;
+  min-height: 32px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.55);
+}
+body[data-theme="light"] #page-scroll-thumb {
+  background: rgba(17, 24, 39, 0.45);
+}
 
 .tab {
   display: flex;

@@ -7,7 +7,7 @@ const { app, BrowserWindow, session } = require("electron");
 
 process.on("uncaughtException", (err) => {
   console.error(err && err.stack ? err.stack : err);
-  app.exit(1);
+  shutdown(1);
 });
 const fs = require("fs");
 const os = require("os");
@@ -41,6 +41,19 @@ function servicesToCheck() {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let smokeWindow = null;
+let shuttingDown = false;
+
+function shutdown(code) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const window = smokeWindow;
+  smokeWindow = null;
+  try { window?.webContents?.stop(); } catch {}
+  try { if (window && !window.isDestroyed()) window.close(); } catch {}
+  setTimeout(() => app.exit(code), 400);
 }
 
 function snippet(text) {
@@ -131,7 +144,7 @@ app.whenReady().then(async () => {
   const userAgent = browserUserAgent();
   const partition = "smoke-services";
   try { session.fromPartition(partition).setUserAgent(userAgent); } catch {}
-  const window = new BrowserWindow({
+  const window = smokeWindow = new BrowserWindow({
     show: false,
     width: 1200,
     height: 800,
@@ -151,16 +164,16 @@ app.whenReady().then(async () => {
       if (!result.ok) failures.push(`${service.id}: ${result.detail}`);
     }
   } finally {
-    try { window.destroy(); } catch {}
+    smokeWindow = window;
   }
   if (failures.length) {
     console.error(`\n${failures.length} service${failures.length === 1 ? "" : "s"} failed to load.`);
-    app.exit(1);
+    shutdown(1);
     return;
   }
   console.log("\nAll services loaded.");
-  app.exit(0);
+  shutdown(0);
 }).catch((err) => {
   console.error(err && err.message ? err.message : err);
-  app.exit(1);
+  shutdown(1);
 });

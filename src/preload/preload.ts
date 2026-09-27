@@ -92,4 +92,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onUpdateFailed: (cb: () => void) => listen("update-failed", cb),
   showAccountMenu: () => send("show-account-menu"),
   onAccountAdd: (cb: () => void) => listen("account-add", cb),
+  onPageScroll: (cb: (info: unknown) => void) => listen("page-scroll", cb),
+  pageScrollTo: (ratio: number) => send("page-scroll-to", ratio),
 });

@@ -325,6 +325,50 @@ function initFind() {
   });
 }
 
+function initPageScroll() {
+  const bar = document.getElementById("page-scroll");
+  const thumb = document.getElementById("page-scroll-thumb");
+  if (!bar || !thumb || !window.electronAPI.onPageScroll) return;
+  const place = (info) => {
+    const board = document.getElementById("board");
+    const compare = document.getElementById("compare-bar");
+    const blocked = (board && board.classList.contains("visible")) || (compare && !compare.hidden);
+    const max = Number(info && info.max) || 0;
+    if (!info || info.hidden || blocked || max <= 8) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    const track = bar.clientHeight || 1;
+    const client = Number(info.client) || 0;
+    const height = Number(info.height) || client + max;
+    const thumbH = Math.max(32, Math.min(track, track * (client / height)));
+    const travel = Math.max(0, track - thumbH);
+    const fromTop = Math.min(max, Math.max(0, Number(info.fromTop) || 0));
+    thumb.style.height = thumbH + "px";
+    thumb.style.top = (travel * (fromTop / max)) + "px";
+  };
+  window.electronAPI.onPageScroll(place);
+  const jump = (event) => {
+    const rect = bar.getBoundingClientRect();
+    const thumbH = thumb.offsetHeight || 32;
+    const y = event.clientY - rect.top - thumbH / 2;
+    const ratio = y / Math.max(1, rect.height - thumbH);
+    window.electronAPI.pageScrollTo(Math.min(1, Math.max(0, ratio)));
+  };
+  bar.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    jump(event);
+    const move = (ev) => jump(ev);
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+
 function initCompare() {
   if (!window.electronAPI.onCompare) return;
   window.electronAPI.onCompare((status) => {
@@ -452,6 +496,7 @@ initWireguard();
 initServices();
 initFind();
 initCompare();
+initPageScroll();
 initUpdates();
 initWindowDrag();
 var ocUpdate = document.getElementById("oc-update-action");

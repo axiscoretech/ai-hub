@@ -2,14 +2,26 @@ const { BrowserWindow, Menu, ipcMain } = require("electron");
 const { handle } = require("./ipc-bind");
 
 function registerMainIpc(live) {
+  ipcMain.on("page-scroll-to", (_event, ratio) => {
+    const value = Number(ratio);
+    if (!Number.isFinite(value)) return;
+    const view = live.activeTab && live.views[live.activeTab];
+    if (!live.isViewUsable(view)) return;
+    const clamped = Math.min(1, Math.max(0, value));
+    view.webContents.executeJavaScript(
+      `window.__aiHubScrollTo && window.__aiHubScrollTo(${clamped})`,
+    ).catch(() => {});
+  });
+
   ipcMain.on("switch-tab", (_event, tabName) => {
     void live.handleSwitchTab(tabName);
   });
 
   ipcMain.on("show-account-menu", (event) => {
+    try {
     const serviceId = live.activeTab;
     if (!serviceId || serviceId === live.OPENCLAW_TAB || !live.win || live.win.isDestroyed()) return;
-    const service = live.services.list().live.services.find((item) => item.id === serviceId);
+    const service = live.services.list().services.find((item) => item.id === serviceId);
     if (!service || !service.accounts.length) return;
     const menu = Menu.buildFromTemplate([
       ...service.accounts.map((account) => ({
@@ -30,6 +42,9 @@ function registerMainIpc(live) {
     ]);
     const parent = BrowserWindow.fromWebContents(event.sender) || live.win;
     menu.popup({ window: parent });
+    } catch (err) {
+      console.error(err);
+    }
   });
 
   handle("services-list", () => live.services.list());

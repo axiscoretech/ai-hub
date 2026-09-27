@@ -45,6 +45,8 @@ let win;
 let views: Record<string, any> = {};
 let activeTab: string | null = null;
 let topBarHeight = 60;
+let pageScrollGutter = false;
+const pageScrollByContents = new WeakMap();
 let tabState = {};
 let popupWindows = new Set<any>();
 let openclawSnapshot: any = null;
@@ -369,34 +371,6 @@ function createWindow() {
   });
 }
 
-function clearPageTopDeadZone(webContents) {
-  if (!webContents || webContents.__pageGap) return;
-  webContents.__pageGap = true;
-  // macOS drops clicks in the top 60px of the page view. Move the site down
-  // so its header buttons land in the area that actually receives clicks.
-  const script = `(() => {
-    const apply = () => {
-      const root = document.documentElement;
-      if (!root || root.dataset.aiHubGap === "1") return;
-      root.dataset.aiHubGap = "1";
-      root.style.setProperty("position", "relative", "important");
-      root.style.setProperty("top", "56px", "important");
-      root.style.setProperty("height", "calc(100% - 56px)", "important");
-      root.style.setProperty("box-sizing", "border-box", "important");
-    };
-    apply();
-    if (!window.__aiHubGapWatch) {
-      window.__aiHubGapWatch = new MutationObserver(apply);
-      window.__aiHubGapWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
-    }
-  })()`;
-  const run = () => {
-    if (!webContents.isDestroyed()) webContents.executeJavaScript(script).catch(() => {});
-  };
-  webContents.on("dom-ready", run);
-  run();
-}
-
 function isViewUsable(view) {
   return !!(view && view.webContents && !view.webContents.isDestroyed());
 }
@@ -434,6 +408,7 @@ const {
   themeColor,
   paintViewTheme,
   attachGuestTheme,
+  attachPageScroll,
   applyContentTheme,
   applyGuestColorScheme,
 } = createTheme({
@@ -442,6 +417,12 @@ const {
   parkedViews: () => parkedViews,
   compareSlots: () => compareSlots,
   isViewUsable,
+  onScroll: (contents, payload) => {
+    pageScrollByContents.set(contents, payload);
+    const current = activeTab && views[activeTab];
+    if (!current || current.webContents !== contents) return;
+    syncPageScrollGutter();
+  },
 });
 
 function getTabUrl(name) {
@@ -646,8 +627,8 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   views[name] = view;
   view.accountKey = accountKey(name);
   paintViewTheme(view);
-  clearPageTopDeadZone(view.webContents);
-  attachGuestTheme(view.webContents);
+  const guestReady = attachGuestTheme(view.webContents);
+  attachPageScroll(view.webContents);
   void applyGuestColorScheme(view.webContents);
   // Board mode keeps the view in `views` but must not put it back on the window.
   // setBrowserView here used to run before the detach, so a throw from loadURL
@@ -789,7 +770,7 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   // The first navigation has to wait until the proxy is applied. Otherwise a
   // localhost page can be sent through the tunnel and fail, then succeed on
   // the next click once the direct route is in place.
-  void proxyReady.then(() => {
+  void Promise.all([proxyReady, guestReady]).then(() => {
     if (!isViewUsable(view)) return;
     applyWebRTCPolicyToContents(view.webContents, services.route(name));
     view.webContents.loadURL(url);
@@ -833,6 +814,20 @@ const {
   openClawTab: OPENCLAW_TAB,
 });
 
+function syncPageScrollGutter() {
+  const current = activeTab && views[activeTab];
+  const payload = current && pageScrollByContents.get(current.webContents);
+  const hidden = !current || !payload || payload.hidden || compareOpen || isBoardWorkspace() || activeTab === OPENCLAW_TAB;
+  const nextGutter = !hidden;
+  if (pageScrollGutter !== nextGutter) {
+    pageScrollGutter = nextGutter;
+    if (current && isViewUsable(current)) resizeView(current);
+  }
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("page-scroll", hidden ? { hidden: true } : payload);
+  }
+}
+
 function switchTab(name) {
   if (!tabs[name]) return;
   if (compareOpen) closeCompare({ restore: false });
@@ -848,6 +843,7 @@ function switchTab(name) {
       void presentOpenClawPage().then((ready) => notifyOpenClawPage(ready));
     }
     win.webContents.send("tab-active", name);
+    syncPageScrollGutter();
     return;
   }
 
@@ -864,15 +860,17 @@ function switchTab(name) {
     activeTab = name;
   }
   win.webContents.send("tab-active", name);
+  syncPageScrollGutter();
 }
 
 function resizeView(view) {
   if (!win || win.isDestroyed() || !view) return;
   const [width, height] = win.getContentSize();
+  const gutter = pageScrollGutter && !compareOpen && !isBoardWorkspace() ? 14 : 0;
   const bounds = {
     x: 0,
     y: topBarHeight,
-    width,
+    width: Math.max(0, width - gutter),
     height: Math.max(0, height - topBarHeight),
   };
   let current: any = null;

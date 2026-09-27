@@ -65,6 +65,7 @@ export const sendChannels = [
   "set-content-theme",
   "move-window-by",
   "show-account-menu",
+  "page-scroll-to",
 ] as const;
 
 export type InvokeChannel = (typeof invokeChannels)[number];
