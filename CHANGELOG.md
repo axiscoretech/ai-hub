@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.42.0 Answer
+
+- Gather sends a task to the chats you pick, lets them compare notes once, and hands the notes to a manager chat that checks them and writes one answer. Choose the manager on the task card.
+- An optional opening line tells the other chats that their reply will be checked. The manager's instruction can be edited too.
+- A chat that shows a busy or rate-limit message, or does not reply within five minutes, is left out instead of holding the others. The bar shows what each chat is doing.
+- Side by side types the task into every chat once its message box has loaded. Pressing Send in one chat sends the others.
+- The new task form stays behind a button once tasks exist. Idle tasks beyond the latest five move to Archive, where they can be restored.
+
 ## 1.28.0 Memory
 
 - A marker on the right shows how far down the chat you are. The site's own scroll bars no longer frame the window, and the message box stays on screen.
