@@ -5,6 +5,8 @@
 
 const { app, BrowserWindow, session } = require("electron");
 
+app.on("window-all-closed", () => {});
+
 process.on("uncaughtException", (err) => {
   console.error(err && err.stack ? err.stack : err);
   shutdown(1);
@@ -90,9 +92,13 @@ function loadService(window, service) {
       contents.removeListener("did-redirect-navigation", onRedirect);
       contents.removeListener("did-fail-load", onFail);
       contents.removeListener("did-finish-load", onLoad);
+      contents.removeListener("render-process-gone", onGone);
       resolve(result);
     };
     const timer = setTimeout(() => finish({ ok: false, detail: "timed out" }), LOAD_TIMEOUT_MS);
+    const onGone = (_event, details) => {
+      finish({ ok: false, detail: `page crashed (${details && details.reason ? details.reason : "unknown"})` });
+    };
     const onRedirect = () => {
       redirects += 1;
       if (redirects > MAX_REDIRECTS) finish({ ok: false, detail: "too many redirects" });
@@ -134,17 +140,17 @@ function loadService(window, service) {
     contents.on("did-redirect-navigation", onRedirect);
     contents.on("did-fail-load", onFail);
     contents.on("did-finish-load", onLoad);
+    contents.on("render-process-gone", onGone);
     contents.loadURL(service.url).catch((err) => {
       finish({ ok: false, detail: err && err.message ? err.message : "could not open the url" });
     });
   });
 }
 
-app.whenReady().then(async () => {
-  const userAgent = browserUserAgent();
-  const partition = "smoke-services";
+function openWindow(service, userAgent) {
+  const partition = `smoke-services-${service.id}`;
   try { session.fromPartition(partition).setUserAgent(userAgent); } catch {}
-  const window = smokeWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     show: false,
     width: 1200,
     height: 800,
@@ -156,15 +162,28 @@ app.whenReady().then(async () => {
     },
   });
   try { window.webContents.setUserAgent(userAgent); } catch {}
+  return window;
+}
+
+async function closeWindow(window) {
+  if (!window || window.isDestroyed()) return;
+  try { window.webContents.stop(); } catch {}
+  await new Promise((resolve) => {
+    window.once("closed", resolve);
+    try { window.destroy(); } catch { resolve(); }
+  });
+}
+
+app.whenReady().then(async () => {
+  const userAgent = browserUserAgent();
   const failures = [];
-  try {
-    for (const service of servicesToCheck()) {
-      const result = await loadService(window, service);
-      console.log(`${result.ok ? "ok" : "FAIL"}  ${service.id}  ${result.detail}`);
-      if (!result.ok) failures.push(`${service.id}: ${result.detail}`);
-    }
-  } finally {
-    smokeWindow = window;
+  for (const service of servicesToCheck()) {
+    const window = smokeWindow = openWindow(service, userAgent);
+    const result = await loadService(window, service);
+    console.log(`${result.ok ? "ok" : "FAIL"}  ${service.id}  ${result.detail}`);
+    if (!result.ok) failures.push(`${service.id}: ${result.detail}`);
+    await closeWindow(window);
+    smokeWindow = null;
   }
   if (failures.length) {
     console.error(`\n${failures.length} service${failures.length === 1 ? "" : "s"} failed to load.`);
