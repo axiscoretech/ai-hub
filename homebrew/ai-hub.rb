@@ -1,12 +1,12 @@
 cask "ai-hub" do
-  version "1.28.0"
+  version "1.42.0"
 
   if Hardware::CPU.arm?
     url "https://github.com/axiscoretech/ai-hub/releases/download/v#{version}/AI-Hub-#{version}-arm64.dmg"
-    sha256 "7251861206c9e2a0211985ad37642a7d5d015647312da2117788e4de876569c6"
+    sha256 "25e36265349320a3e2592f80f00ff8d93f6e8403be97850b98d5afd0b338f0a8"
   else
     url "https://github.com/axiscoretech/ai-hub/releases/download/v#{version}/AI-Hub-#{version}.dmg"
-    sha256 "fb863e035b7bfff6c08b93e1c2247e6e8c0c3acdafaa49f63cede8dd85766d59"
+    sha256 "31c55d9fef6608fc13b6679989016c1f0ddfacadb7b85d9ad4c83f19c1962ab6"
   end
 
   name "AI Hub"
