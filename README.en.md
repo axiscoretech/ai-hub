@@ -64,7 +64,7 @@ Latest release, into `/Applications`, then Launchpad. Apple Silicon and Intel ar
 curl -fsSL https://raw.githubusercontent.com/axiscoretech/ai-hub/master/install.sh | bash
 ```
 
-The script installs the latest release into `/Applications` and opens it. A notarized build opens without an extra prompt. If the signature is not accepted, the script clears the quarantine flag once.
+The script installs the latest release into `/Applications` and opens it. Ordinary Terminal is enough: Xcode and the Command Line Tools are not required. A notarized build opens without an extra prompt. If the signature is not accepted, the script clears the quarantine flag once.
 
 If macOS still blocks the app after this script, use the steps under the DMG download below.
 

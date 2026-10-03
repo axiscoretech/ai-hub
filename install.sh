@@ -2,9 +2,53 @@
 # Install the latest AI Hub release into /Applications and open it.
 # macOS only. A notarized app opens as it is. Quarantine is cleared only
 # when the signature is not accepted.
+#
+# Do not call python3, git, or clang here. On a Mac without Xcode Command
+# Line Tools those binaries are stubs that pop the developer-tools dialog
+# and then exit.
 set -euo pipefail
 
 REPO="axiscoretech/ai-hub"
+
+# Read GitHub latest-release JSON on stdin or as $2 and print the zip URL.
+pick_mac_zip_url() {
+  local arch="$1"
+  local json="$2"
+  local matches candidate
+
+  matches="$(printf '%s' "$json" | grep -oE 'https://[^"]+-mac\.zip"' || true)"
+  while IFS= read -r candidate; do
+    candidate="${candidate%\"}"
+    [[ -z "$candidate" ]] && continue
+    if [[ "$arch" == "arm64" ]]; then
+      if [[ "$candidate" == *-arm64-mac.zip ]]; then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    else
+      if [[ "$candidate" != *arm64* ]]; then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    fi
+  done <<< "$matches"
+  return 1
+}
+
+if [[ "${1:-}" == "--print-zip-url" ]]; then
+  arch="${2:-}"
+  json="$(cat)"
+  if [[ "$arch" != "arm64" && "$arch" != "x64" ]]; then
+    echo "Unknown architecture: ${arch}" >&2
+    exit 1
+  fi
+  if ! url="$(pick_mac_zip_url "$arch" "$json")"; then
+    echo "The latest release has no macOS build for this Mac." >&2
+    exit 1
+  fi
+  printf '%s\n' "$url"
+  exit 0
+fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "This installer is for macOS."
@@ -23,28 +67,15 @@ case "$(uname -m)" in
 esac
 
 echo "Looking up the latest AI Hub release…"
-url="$(python3 - "$arch" << 'PY'
-import json, sys, urllib.request
-arch = sys.argv[1]
-req = urllib.request.Request(
-    "https://api.github.com/repos/axiscoretech/ai-hub/releases/latest",
-    headers={"Accept": "application/vnd.github+json", "User-Agent": "ai-hub-install"},
-)
-with urllib.request.urlopen(req) as response:
-    release = json.load(response)
-for asset in release.get("assets", []):
-    name = asset.get("name", "")
-    if arch == "arm64" and name.endswith("-arm64-mac.zip"):
-        print(asset["browser_download_url"])
-        break
-    if arch == "x64" and name.endswith("-mac.zip") and "arm64" not in name:
-        print(asset["browser_download_url"])
-        break
-else:
-    sys.stderr.write("The latest release has no macOS build for this Mac.\n")
-    sys.exit(1)
-PY
-)"
+json="$(curl -fsSL --retry 3 \
+  -H "Accept: application/vnd.github+json" \
+  -H "User-Agent: ai-hub-install" \
+  "https://api.github.com/repos/${REPO}/releases/latest")"
+if ! url="$(pick_mac_zip_url "$arch" "$json")"; then
+  echo "The latest release has no macOS build for this Mac."
+  echo "Download a DMG from https://github.com/${REPO}/releases/latest"
+  exit 1
+fi
 
 work="$(mktemp -d)"
 cleanup() { rm -rf "$work"; }
