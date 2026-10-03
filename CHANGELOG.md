@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.42.2 Answer
 
 - Sign in shared profiles signs each shared profile in with the shared Google account. The tabs no longer stop on a logged-out home page.
 
