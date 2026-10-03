@@ -64,6 +64,10 @@
     if (email) email.textContent = (err && err.message) || "Couldn't update Google sign-in";
   }
 
+  function layoutShell() {
+    if (typeof layoutInset === "function") layoutInset();
+  }
+
   function closePanel() {
     const root = panel();
     if (root) {
@@ -75,10 +79,17 @@
       overlay.classList.remove("open");
       overlay.hidden = true;
     }
+    const button = document.getElementById("google-btn");
+    if (button) button.setAttribute("aria-expanded", "false");
+    layoutShell();
   }
 
   function openPanel() {
     if (typeof closeVpnPanel === "function") closeVpnPanel();
+    const compareBar = document.getElementById("compare-bar");
+    if (compareBar && !compareBar.hidden && window.electronAPI.compareStop) {
+      void window.electronAPI.compareStop();
+    }
     const root = panel();
     if (root) {
       root.hidden = false;
@@ -89,6 +100,9 @@
       overlay.hidden = false;
       overlay.classList.add("open");
     }
+    const button = document.getElementById("google-btn");
+    if (button) button.setAttribute("aria-expanded", "true");
+    layoutShell();
   }
 
   function init() {
@@ -126,8 +140,12 @@
         if (!status || !status.signedIn) openPanel();
       }
     }).catch(() => {});
+    window.addEventListener("resize", () => {
+      if (panel() && panel().classList.contains("open")) layoutShell();
+    });
     render();
   }
 
+  window.closeGooglePanel = closePanel;
   init();
 })();

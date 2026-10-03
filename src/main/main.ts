@@ -1284,5 +1284,13 @@ app.on("activate", () => {
 });
 
 if (process.env.AI_HUB_TEST === "1") {
-  global.__aiHubTest = { shouldOpenInSystemBrowser };
+  global.__aiHubTest = {
+    shouldOpenInSystemBrowser,
+    getTopBarHeight: () => topBarHeight,
+    getPageViewBounds: () => {
+      const view = activeTab && views[activeTab];
+      if (!isViewUsable(view)) return null;
+      try { return view.getBounds(); } catch { return null; }
+    },
+  };
 }

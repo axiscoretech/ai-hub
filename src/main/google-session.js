@@ -247,6 +247,8 @@ function createGoogleSession(options = {}) {
       void publishGoogle();
     });
     popup.loadURL(ACCOUNT_URL);
+    popup.show();
+    popup.focus();
     return popup;
   }
 

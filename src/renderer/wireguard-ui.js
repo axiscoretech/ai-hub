@@ -6,12 +6,24 @@ var panelOpen = false;
 var proxyMode = 'direct';
 var extensionRegistry = [];
 
+function googlePanelIsOpen() {
+  const root = document.getElementById('google-panel');
+  return !!(root && !root.hidden && root.classList.contains('open'));
+}
+
 function shellInsetHeight() {
   let height = 60;
   ['tunnel-dropped', 'find-bar', 'compare-bar', 'update-bar', 'oc-update-bar'].forEach((id) => {
     const bar = document.getElementById(id);
     if (bar && !bar.hidden) height += bar.offsetHeight || 34;
   });
+  // The chat page is a native WebContentsView on top of the shell. While the
+  // Google panel is open, give the shell the whole window so Sign in with
+  // Google can receive clicks instead of the page underneath.
+  if (googlePanelIsOpen()) {
+    const viewport = window.innerHeight || document.documentElement.clientHeight || 0;
+    return Math.max(height, viewport);
+  }
   if (panelOpen) {
     const panel = document.getElementById('vpn-panel');
     height += (panel ? panel.offsetHeight : 0) + 6;
@@ -30,6 +42,7 @@ function pushBrowserView() {
 }
 
 function openVpnPanel() {
+  if (typeof closeGooglePanel === 'function') closeGooglePanel();
   panelOpen = true;
   document.getElementById('vpn-panel').classList.add('open');
   document.getElementById('vpn-overlay').style.display = 'block';

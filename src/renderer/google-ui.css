@@ -7,7 +7,10 @@
   top: 60px;
   z-index: 35;
 }
-#google-overlay.open { display: block; }
+#google-overlay.open {
+  display: block;
+  background: rgba(0, 0, 0, 0.35);
+}
 #google-panel {
   display: none;
   position: fixed;
@@ -78,6 +81,7 @@ body[data-theme="light"] #google-panel {
   border-color: #d8deea;
   color: #101828;
 }
+body[data-theme="light"] #google-overlay.open { background: rgba(15, 23, 42, 0.28); }
 body[data-theme="light"] #google-panel p { color: #516074; }
 body[data-theme="light"] #google-email { color: #4338ca; }
 body[data-theme="light"] .g-actions button,

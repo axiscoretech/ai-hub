@@ -71,6 +71,37 @@ test("the app starts, isolates partitions, and blocks outside navigation", async
     assert.equal(ui.hasSelect, false);
     assert.equal(ui.menuColor, "rgb(17, 24, 39)");
     assert.equal(ui.downloadColor, "rgb(17, 24, 39)");
+
+    const google = window.locator("#google-btn");
+    await google.waitFor();
+    if (!(await window.locator("#google-panel.open").count())) await google.click();
+    await window.locator("#google-panel.open").waitFor();
+    assert.equal(await window.locator("#google-signin").isEnabled(), true);
+
+    const deadline = Date.now() + 4000;
+    let overlay = { topBar: 0, windowHeight: 1, page: null };
+    while (Date.now() < deadline) {
+      overlay = await app.evaluate(({ BrowserWindow }) => {
+        const api = global.__aiHubTest;
+        const win = BrowserWindow.getAllWindows()[0];
+        const [, height] = win.getContentSize();
+        return {
+          topBar: api.getTopBarHeight(),
+          windowHeight: height,
+          page: api.getPageViewBounds(),
+        };
+      });
+      if (overlay.topBar >= overlay.windowHeight - 2) break;
+      if (overlay.page && overlay.page.height === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(
+      overlay.topBar >= overlay.windowHeight - 2,
+      `Google panel should cover the page view (top bar ${overlay.topBar}, window ${overlay.windowHeight})`,
+    );
+    if (overlay.page) assert.equal(overlay.page.height, 0);
+    await google.click();
+    await window.locator("#google-panel").waitFor({ state: "hidden" });
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });

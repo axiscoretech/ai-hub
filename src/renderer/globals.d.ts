@@ -3,6 +3,7 @@ export {};
 declare global {
   interface Window {
     electronAPI: any;
+    closeGooglePanel?: () => void;
     __aiHubHideOpenClawUpdate?: MutationObserver;
   }
 

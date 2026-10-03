@@ -62,6 +62,7 @@ function setActive(name) {
 }
 
 function switchTab(name) {
+  if (typeof closeGooglePanel === "function") closeGooglePanel();
   activeTabName = name;
   setActive(name);
   window.electronAPI.switchTab(name);
