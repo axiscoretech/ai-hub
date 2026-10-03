@@ -125,6 +125,7 @@
       window.electronAPI.googleApplyAll().then((next) => {
         applyStatus(next);
         apply.textContent = "Sign in shared profiles";
+        closePanel();
       }).catch((err) => {
         showError(err);
         apply.disabled = !state.signedIn;

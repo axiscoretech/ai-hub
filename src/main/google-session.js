@@ -9,8 +9,10 @@ const {
   isGoogleHost,
   hasGoogleSession,
   findEmail,
-  loginUrlFor,
   CLICK_GOOGLE_SCRIPT,
+  pageKey,
+  signInNavigation,
+  googleClickAction,
 } = require("./google");
 
 function createGoogleSession(options = {}) {
@@ -27,7 +29,7 @@ function createGoogleSession(options = {}) {
   const themeColor = options.themeColor || (() => "#1e1e1e");
   const OPENCLAW_TAB = options.openClawTab || "OpenClaw";
 
-  const googleClicks = new Set();
+  const googleClickJobs = new Map();
   let googleWindow = null;
 
   function googleAccountsFile() {
@@ -163,37 +165,118 @@ function createGoogleSession(options = {}) {
     }
   }
 
-  function armGoogleClick(view, name) {
-    if (!view || !view.webContents) return;
-    googleClicks.add(name);
-    const onLoad = () => {
-      if (!googleClicks.has(name)) {
-        view.webContents.removeListener("did-finish-load", onLoad);
-        return;
-      }
-      const current = view.webContents.getURL() || "";
-      if (/accounts\.google\.com|myaccount\.google\.com/.test(current)) return;
-      view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
-      googleClicks.delete(name);
-      view.webContents.removeListener("did-finish-load", onLoad);
-    };
-    view.webContents.on("did-finish-load", onLoad);
+  function contentsAlive(view) {
+    try {
+      return Boolean(view && view.webContents && !view.webContents.isDestroyed());
+    } catch {
+      return false;
+    }
   }
 
-  function openServiceForGoogle(name, options = {}) {
-    const url = options.home ? (getTabs()[name] || loginUrlFor(name)) : (loginUrlFor(name) || getTabs()[name]);
+  function stopGoogleClick(name) {
+    const job = googleClickJobs.get(name);
+    if (!job) return;
+    clearTimeout(job.timer);
+    try {
+      if (contentsAlive(job.view)) job.view.webContents.removeListener("did-finish-load", job.onLoad);
+    } catch {}
+    googleClickJobs.delete(name);
+  }
+
+  function armGoogleClick(view, name, options = {}) {
+    if (!view || !view.webContents || !name) return;
+    stopGoogleClick(name);
+    const waitForLoad = options.waitForLoad !== false;
+    const started = Date.now();
+    let clickFrom = 0;
+    let originUrl = "";
+    try { originUrl = view.webContents.getURL() || ""; } catch {}
+    /** @type {{ view: any, timer: ReturnType<typeof setTimeout> | undefined, onLoad: () => void, again: boolean }} */
+    const job = { view, timer: undefined, onLoad: () => {}, again: false };
+    let running = false;
+    const schedule = (delay) => {
+      if (!googleClickJobs.has(name)) return;
+      clearTimeout(job.timer);
+      job.timer = setTimeout(attempt, delay);
+    };
+    const attempt = () => {
+      if (!googleClickJobs.has(name)) return;
+      clearTimeout(job.timer);
+      job.timer = undefined;
+      if (running) {
+        job.again = true;
+        return;
+      }
+      if (!contentsAlive(view)) {
+        stopGoogleClick(name);
+        return;
+      }
+      let current = "";
+      try { current = view.webContents.getURL() || ""; } catch { return; }
+      const action = googleClickAction(current, name);
+      const stillOnOrigin = waitForLoad && pageKey(current) === pageKey(originUrl);
+      const onLogin = action === "click" && !stillOnOrigin;
+      if (onLogin && !clickFrom) clickFrom = Date.now();
+      const clickTimedOut = Boolean(clickFrom) && action !== "wait" && Date.now() - clickFrom > 12000;
+      if (Date.now() - started > 30000 || clickTimedOut || (action === "stop" && !stillOnOrigin)) {
+        stopGoogleClick(name);
+        return;
+      }
+      if (!onLogin) {
+        schedule(400);
+        return;
+      }
+      running = true;
+      // userGesture has to be set on each attempt. A click from a page timer
+      // is not a user gesture, so the site's Google popup would be blocked.
+      view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).then((clicked) => {
+        running = false;
+        if (!googleClickJobs.has(name)) return;
+        if (clicked) {
+          stopGoogleClick(name);
+          return;
+        }
+        if (job.again) {
+          job.again = false;
+          attempt();
+          return;
+        }
+        schedule(400);
+      }).catch(() => {
+        running = false;
+        if (!googleClickJobs.has(name) || !contentsAlive(view)) {
+          stopGoogleClick(name);
+          return;
+        }
+        schedule(400);
+      });
+    };
+    job.onLoad = () => attempt();
+    googleClickJobs.set(name, job);
+    try { view.webContents.on("did-finish-load", job.onLoad); } catch {}
+    if (!waitForLoad) attempt();
+  }
+
+  function openServiceForGoogle(name) {
+    const tabUrl = getTabs()[name] || "";
+    const existing = getViews()[name];
+    let current = "";
+    if (isViewUsable(existing)) {
+      try { current = existing.webContents.getURL() || ""; } catch {}
+    }
+    const plan = signInNavigation(name, current, tabUrl);
+    if (!plan.url) return;
     const background = Boolean(getActiveTab() && getActiveTab() !== name);
-    const googleClick = !options.home && name !== "Gemini";
-    if (!isViewUsable(getViews()[name])) {
-      createTab(name, url, { background, googleClick });
+    if (!isViewUsable(existing)) {
+      createTab(name, plan.url, { background, googleClick: plan.googleClick });
       return;
     }
-    const view = getViews()[name];
-    if (googleClick) armGoogleClick(view, name);
-    let current = "";
-    try { current = view.webContents.getURL(); } catch {}
-    if (current !== url) view.webContents.loadURL(url);
-    else if (googleClick) view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).catch(() => {});
+    if (plan.googleClick) armGoogleClick(existing, name, { waitForLoad: plan.load });
+    if (plan.load) existing.webContents.loadURL(plan.url);
+    else if (plan.reload) {
+      if (typeof existing.webContents.reloadIgnoringCache === "function") existing.webContents.reloadIgnoringCache();
+      else existing.webContents.reload();
+    }
   }
 
   async function rememberGoogleEmail(page) {
@@ -267,7 +350,9 @@ function createGoogleSession(options = {}) {
       const target = session.fromPartition(partition);
       await clearGoogleCookies(target);
       await copyGoogleCookies(source, target);
-      if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId, { home: true });
+      // Copied Google cookies do not create the chat's own session. Open the
+      // sign-in page and continue with Google; Gemini itself reads the cookies.
+      if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId);
     }
     return publishGoogle();
   }
@@ -339,7 +424,7 @@ function createGoogleSession(options = {}) {
       const sessionTarget = session.fromPartition(partition);
       await clearGoogleCookies(sessionTarget);
       await copyGoogleCookies(source, sessionTarget);
-      if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId, { home: true });
+      if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId);
     }
     return publishGoogle();
   });

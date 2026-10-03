@@ -61,15 +61,81 @@ function sharedProfiles(profiles, book) {
   });
 }
 
+function pageKey(url) {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${parsed.origin}${path === "/" ? "/" : path}`;
+  } catch {
+    return "";
+  }
+}
+
+function signInNavigation(service, currentUrl, tabUrl) {
+  const none = { url: "", googleClick: false, load: false, reload: false };
+  if (!service || service === "OpenClaw") return none;
+  const login = loginUrlFor(service);
+  const url = login || tabUrl || "";
+  if (!url) return none;
+  const googleClick = service !== "Gemini";
+  const same = pageKey(currentUrl) !== "" && pageKey(currentUrl) === pageKey(url);
+  return {
+    url,
+    googleClick,
+    load: !same,
+    reload: same && !googleClick,
+  };
+}
+
+function googleClickAction(url, service) {
+  const current = String(url || "");
+  if (!current || current === "about:blank" || current.startsWith("about:")) return "wait";
+  let host = "";
+  let path = "/";
+  try {
+    const parsed = new URL(current);
+    host = parsed.hostname.toLowerCase();
+    path = parsed.pathname || "/";
+  } catch {
+    return "wait";
+  }
+  if (
+    host === "accounts.google.com"
+    || host.endsWith(".accounts.google.com")
+    || host === "myaccount.google.com"
+    || host === "accounts.youtube.com"
+  ) return "wait";
+  const login = loginUrlFor(service);
+  if (login && pageKey(login) === pageKey(current)) return "click";
+  if (/\/(?:auth|oauth|login|sign[-_]?in|signin)(?:\/|$)/i.test(path)) return "click";
+  if (!login) return "click";
+  return "stop";
+}
+
+const GOOGLE_SIGN_IN_NAME = String.raw`google`;
+const GOOGLE_SIGN_IN_HINT = String.raw`continue|sign\s?-?in|log\s?-?in|login|with|войти|вход|使用|通过|через`;
+
+function googleSignInLabel(text) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  if (!flat || flat.length > 80) return false;
+  if (!new RegExp(GOOGLE_SIGN_IN_NAME, "i").test(flat)) return false;
+  if (new RegExp(`^${GOOGLE_SIGN_IN_NAME}$`, "i").test(flat)) return true;
+  return new RegExp(GOOGLE_SIGN_IN_HINT, "i").test(flat);
+}
+
 const CLICK_GOOGLE_SCRIPT = `(() => {
-  const nodes = [...document.querySelectorAll("button, a, [role='button']")];
-  const target = nodes.find((el) => {
-    const text = ((el.innerText || "") + " " + (el.getAttribute("aria-label") || "")).replace(/\\s+/g, " ").trim();
-    return /google/i.test(text) && text.length < 80;
-  });
-  if (!target) return false;
-  target.click();
-  return true;
+  if (window.__aihubGoogleClicked) return true;
+  const nodes = document.querySelectorAll("button, a, [role='button'], [role='link']");
+  for (const el of nodes) {
+    if (!el || el.disabled || el.hidden || el.getAttribute("aria-disabled") === "true" || el.getAttribute("aria-hidden") === "true") continue;
+    const text = ((el.innerText || "") + " " + (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("title") || "")).replace(/\\s+/g, " ").trim();
+    if (!text || text.length > 80 || !/${GOOGLE_SIGN_IN_NAME}/i.test(text)) continue;
+    if (!/^${GOOGLE_SIGN_IN_NAME}$/i.test(text) && !/${GOOGLE_SIGN_IN_HINT}/i.test(text)) continue;
+    window.__aihubGoogleClicked = true;
+    el.click();
+    return true;
+  }
+  return false;
 })()`;
 
 module.exports = {
@@ -81,5 +147,9 @@ module.exports = {
   loginUrlFor,
   targetsForApply,
   sharedProfiles,
+  pageKey,
+  signInNavigation,
+  googleClickAction,
+  googleSignInLabel,
   CLICK_GOOGLE_SCRIPT,
 };

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Sign in shared profiles signs each shared profile in with the shared Google account. The tabs no longer stop on a logged-out home page.
+
 ## 1.42.1 Answer
 
 - The one-command Mac install no longer calls `python3`, so it works on a Mac without Xcode Command Line Tools.

@@ -195,7 +195,7 @@ In the flag panel, each account has its own **Tunnel** or **Direct** choice. Ope
 
 ## Google
 
-The **G** button shares one Google sign-in only with the profiles you mark **Shared**. A profile marked **Own account** keeps a separate Google login. A new extra account starts as its own. **Sign in shared profiles** copies the shared Google session into the profiles in that group and leaves the others alone.
+The **G** button shares one Google sign-in only with the profiles you mark **Shared**. A profile marked **Own account** keeps a separate Google login. A new extra account starts as its own. **Sign in shared profiles** copies the shared Google session into that group, opens each profile's sign-in, and continues with Google. Other profiles are left alone.
 
 ---
 
