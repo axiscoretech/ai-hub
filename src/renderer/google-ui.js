@@ -65,7 +65,7 @@
   }
 
   function layoutShell() {
-    if (typeof layoutInset === "function") layoutInset();
+    if (typeof window.layoutInset === "function") window.layoutInset();
   }
 
   function closePanel() {
@@ -85,7 +85,7 @@
   }
 
   function openPanel() {
-    if (typeof closeVpnPanel === "function") closeVpnPanel();
+    if (typeof window.closeVpnPanel === "function") window.closeVpnPanel();
     const compareBar = document.getElementById("compare-bar");
     if (compareBar && !compareBar.hidden && window.electronAPI.compareStop) {
       void window.electronAPI.compareStop();

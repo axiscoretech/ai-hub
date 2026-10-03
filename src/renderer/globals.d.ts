@@ -4,6 +4,8 @@ declare global {
   interface Window {
     electronAPI: any;
     closeGooglePanel?: () => void;
+    layoutInset?: () => void;
+    closeVpnPanel?: () => void;
     __aiHubHideOpenClawUpdate?: MutationObserver;
   }
 

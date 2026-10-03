@@ -42,7 +42,7 @@ function pushBrowserView() {
 }
 
 function openVpnPanel() {
-  if (typeof closeGooglePanel === 'function') closeGooglePanel();
+  if (typeof window.closeGooglePanel === 'function') window.closeGooglePanel();
   panelOpen = true;
   document.getElementById('vpn-panel').classList.add('open');
   document.getElementById('vpn-overlay').style.display = 'block';
