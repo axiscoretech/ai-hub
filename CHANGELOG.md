@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.42.1 Answer
+
+- The one-command Mac install no longer calls `python3`, so it works on a Mac without Xcode Command Line Tools.
+- Sign in with Google receives clicks. The chat page no longer sits on top of the panel.
+
 ## 1.42.0 Answer
 
 - Gather sends a task to the chats you pick, lets them compare notes once, and hands the notes to a manager chat that checks them and writes one answer. Choose the manager on the task card.
