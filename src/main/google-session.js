@@ -11,8 +11,14 @@ const {
   findEmail,
   CLICK_GOOGLE_SCRIPT,
   pageKey,
+  loginUrlFor,
   signInNavigation,
-  googleClickAction,
+  googleCookieSet,
+  oauthHref,
+  chooseGoogleTarget,
+  LIST_GOOGLE_TARGETS_SCRIPT,
+  isGoogleAccountUrl,
+  authLanded,
 } = require("./google");
 
 function createGoogleSession(options = {}) {
@@ -146,23 +152,41 @@ function createGoogleSession(options = {}) {
     )));
   }
 
-  async function copyGoogleCookies(fromSession, toSession) {
-    const cookies = await fromSession.cookies.get({});
-    for (const cookie of cookies) {
-      if (!isGoogleHost(cookie.domain) || !cookie.name || !cookie.value) continue;
-      const payload = {
-        url: cookieUrl(cookie),
-        name: cookie.name,
-        value: cookie.value,
-        path: cookie.path || "/",
-        secure: Boolean(cookie.secure),
-        httpOnly: Boolean(cookie.httpOnly),
-      };
-      if (String(cookie.domain || "").startsWith(".")) payload.domain = cookie.domain;
-      if (cookie.expirationDate) payload.expirationDate = cookie.expirationDate;
-      if (cookie.sameSite && cookie.sameSite !== "unspecified") payload.sameSite = cookie.sameSite;
-      try { await toSession.cookies.set(payload); } catch {}
+  async function googleCookies(fromSession) {
+    const lists = await Promise.all([
+      fromSession.cookies.get({}).catch(() => []),
+      fromSession.cookies.get({ url: "https://accounts.google.com/" }).catch(() => []),
+      fromSession.cookies.get({ url: "https://www.google.com/" }).catch(() => []),
+      fromSession.cookies.get({ url: "https://mail.google.com/" }).catch(() => []),
+    ]);
+    const seen = new Set();
+    const cookies = [];
+    for (const list of lists) {
+      for (const cookie of list || []) {
+        const key = `${cookie.name}|${cookie.domain}|${cookie.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cookies.push(cookie);
+      }
     }
+    return cookies;
+  }
+
+  async function copyGoogleCookies(fromSession, toSession) {
+    const cookies = await googleCookies(fromSession);
+    for (const cookie of cookies) {
+      const payload = googleCookieSet(cookie);
+      if (!payload) continue;
+      try {
+        await toSession.cookies.set(payload);
+      } catch {
+        if (!payload.domain) continue;
+        const hostOnly = { ...payload };
+        delete hostOnly.domain;
+        try { await toSession.cookies.set(hostOnly); } catch {}
+      }
+    }
+    try { await toSession.cookies.flushStore(); } catch {}
   }
 
   function contentsAlive(view) {
@@ -173,110 +197,227 @@ function createGoogleSession(options = {}) {
     }
   }
 
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   function stopGoogleClick(name) {
     const job = googleClickJobs.get(name);
     if (!job) return;
-    clearTimeout(job.timer);
-    try {
-      if (contentsAlive(job.view)) job.view.webContents.removeListener("did-finish-load", job.onLoad);
-    } catch {}
+    job.cancel = true;
     googleClickJobs.delete(name);
   }
 
-  function armGoogleClick(view, name, options = {}) {
-    if (!view || !view.webContents || !name) return;
-    stopGoogleClick(name);
-    const waitForLoad = options.waitForLoad !== false;
-    const started = Date.now();
-    let clickFrom = 0;
-    let originUrl = "";
-    try { originUrl = view.webContents.getURL() || ""; } catch {}
-    /** @type {{ view: any, timer: ReturnType<typeof setTimeout> | undefined, onLoad: () => void, again: boolean }} */
-    const job = { view, timer: undefined, onLoad: () => {}, again: false };
-    let running = false;
-    const schedule = (delay) => {
-      if (!googleClickJobs.has(name)) return;
-      clearTimeout(job.timer);
-      job.timer = setTimeout(attempt, delay);
-    };
-    const attempt = () => {
-      if (!googleClickJobs.has(name)) return;
-      clearTimeout(job.timer);
-      job.timer = undefined;
-      if (running) {
-        job.again = true;
-        return;
-      }
-      if (!contentsAlive(view)) {
-        stopGoogleClick(name);
-        return;
-      }
-      let current = "";
-      try { current = view.webContents.getURL() || ""; } catch { return; }
-      const action = googleClickAction(current, name);
-      const stillOnOrigin = waitForLoad && pageKey(current) === pageKey(originUrl);
-      const onLogin = action === "click" && !stillOnOrigin;
-      if (onLogin && !clickFrom) clickFrom = Date.now();
-      const clickTimedOut = Boolean(clickFrom) && action !== "wait" && Date.now() - clickFrom > 12000;
-      if (Date.now() - started > 30000 || clickTimedOut || (action === "stop" && !stillOnOrigin)) {
-        stopGoogleClick(name);
-        return;
-      }
-      if (!onLogin) {
-        schedule(400);
-        return;
-      }
-      running = true;
-      // userGesture has to be set on each attempt. A click from a page timer
-      // is not a user gesture, so the site's Google popup would be blocked.
-      view.webContents.executeJavaScript(CLICK_GOOGLE_SCRIPT, true).then((clicked) => {
-        running = false;
-        if (!googleClickJobs.has(name)) return;
-        if (clicked) {
-          stopGoogleClick(name);
-          return;
-        }
-        if (job.again) {
-          job.again = false;
-          attempt();
-          return;
-        }
-        schedule(400);
-      }).catch(() => {
-        running = false;
-        if (!googleClickJobs.has(name) || !contentsAlive(view)) {
-          stopGoogleClick(name);
-          return;
-        }
-        schedule(400);
-      });
-    };
-    job.onLoad = () => attempt();
-    googleClickJobs.set(name, job);
-    try { view.webContents.on("did-finish-load", job.onLoad); } catch {}
-    if (!waitForLoad) attempt();
+  function safeUrl(view) {
+    try { return view.webContents.getURL() || ""; } catch { return ""; }
   }
 
-  function openServiceForGoogle(name) {
+  async function trustedClick(view, x, y) {
+    const contents = view.webContents;
+    const factor = typeof contents.getZoomFactor === "function" ? contents.getZoomFactor() : 1;
+    const zoom = factor > 0 ? factor : 1;
+    const point = { x: Math.round(x * zoom), y: Math.round(y * zoom) };
+    try { if (getWin() && !getWin().isDestroyed()) getWin().focus(); } catch {}
+    try { contents.focus(); } catch {}
+    // element.click() is untrusted, and these sites ignore it. A real mouse
+    // event is what starts Continue with Google, including inside an iframe.
+    const send = (type, extra) => contents.sendInputEvent({ type, x: point.x, y: point.y, ...extra });
+    send("mouseMove", { movementX: 0, movementY: 0 });
+    send("mouseDown", { button: "left", clickCount: 1 });
+    send("mouseUp", { button: "left", clickCount: 1 });
+  }
+
+  async function readTargets(view) {
+    try {
+      return await view.webContents.executeJavaScript(LIST_GOOGLE_TARGETS_SCRIPT, true);
+    } catch {
+      return null;
+    }
+  }
+
+  function mainFrameLoading(view) {
+    try {
+      if (typeof view.webContents.isLoadingMainFrame === "function") return view.webContents.isLoadingMainFrame();
+      return view.webContents.isLoading();
+    } catch {
+      return false;
+    }
+  }
+
+  async function waitForNavigation(view, startLoad) {
+    if (!contentsAlive(view)) return;
+    await new Promise((resolve) => {
+      let settled = false;
+      let sawStart = false;
+      /** @type {ReturnType<typeof setTimeout> | undefined} */
+      let timer;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { view.webContents.removeListener("did-start-navigation", onStart); } catch {}
+        try { view.webContents.removeListener("did-finish-load", onFinish); } catch {}
+        try { view.webContents.removeListener("did-fail-load", onFail); } catch {}
+        resolve(undefined);
+      };
+      const onStart = (event, _url, isInPlace, isMainFrameArg) => {
+        const main = event && typeof event.isMainFrame === "boolean" ? event.isMainFrame : isMainFrameArg;
+        const same = event && typeof event.isSameDocument === "boolean" ? event.isSameDocument : isInPlace;
+        if (main === false || same === true) return;
+        sawStart = true;
+      };
+      const onFinish = () => { if (sawStart) finish(); };
+      const onFail = () => { if (sawStart) finish(); };
+      try {
+        view.webContents.on("did-start-navigation", onStart);
+        view.webContents.on("did-finish-load", onFinish);
+        view.webContents.on("did-fail-load", onFail);
+      } catch {
+        finish();
+        return;
+      }
+      try { startLoad(); } catch { finish(); return; }
+      timer = setTimeout(finish, 15000);
+    });
+  }
+
+  async function ensureLaidOut(view, name) {
+    const present = options.presentService;
+    const started = Date.now();
+    while (Date.now() - started < 1500) {
+      let bounds = null;
+      try { bounds = view.getBounds(); } catch {}
+      if (bounds && bounds.width >= 200 && bounds.height >= 200) {
+        try {
+          await view.webContents.executeJavaScript(
+            "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+            true,
+          );
+        } catch {}
+        return;
+      }
+      if (typeof present === "function") {
+        try { await present(name); } catch {}
+      }
+      await wait(80);
+    }
+  }
+
+  /**
+   * @returns {Promise<"done" | "form" | "timeout" | "cancelled" | "gone">}
+   */
+  function armGoogleClick(view, name, clickOptions = {}) {
+    if (!view || !view.webContents || !name) return Promise.resolve(/** @type {"gone"} */ ("gone"));
+    stopGoogleClick(name);
+    const email = typeof clickOptions.email === "string" ? clickOptions.email : "";
+    const origin = typeof clickOptions.origin === "string" ? clickOptions.origin : safeUrl(view);
+    /** @type {{ cancel: boolean }} */
+    const job = { cancel: false };
+    googleClickJobs.set(name, job);
+    const done = (async () => {
+      const deadline = Date.now() + 32000;
+      let clicks = 0;
+      let idle = 0;
+      let visitedGoogle = isGoogleAccountUrl(safeUrl(view));
+      let openedDialog = false;
+      while (Date.now() < deadline && clicks < 7) {
+        if (job.cancel) return "cancelled";
+        if (!contentsAlive(view)) return "gone";
+        if (mainFrameLoading(view)) {
+          await wait(200);
+          continue;
+        }
+        await ensureLaidOut(view, name);
+        if (job.cancel) return "cancelled";
+        const url = safeUrl(view);
+        if (isGoogleAccountUrl(url)) visitedGoogle = true;
+        const scan = await readTargets(view);
+        if (job.cancel) return "cancelled";
+        const choice = chooseGoogleTarget(scan, email);
+        const settled = authLanded(name, url) && !isGoogleAccountUrl(url);
+        if (choice.action === "form") return "form";
+        if (choice.action === "none") {
+          idle += 1;
+          const login = loginUrlFor(name);
+          const onLogin = Boolean(login) && pageKey(login) === pageKey(url);
+          // Home pages that are also the login URL still need time to draw
+          // Sign in. A chat that left that URL, or came back from Google, is done.
+          if (visitedGoogle && settled && idle >= 3) return "done";
+          if (!onLogin && settled && idle >= 4) return "done";
+          if (idle >= 24) return "timeout";
+          await wait(400);
+          continue;
+        }
+        idle = 0;
+        if (choice.action === "open" && openedDialog) {
+          await wait(400);
+          continue;
+        }
+        const href = choice.action === "google" ? oauthHref(choice.href) : "";
+        const before = url;
+        clicks += 1;
+        if (choice.action === "open") openedDialog = true;
+        if (href) {
+          const pending = view.webContents.loadURL(href);
+          if (pending && typeof pending.catch === "function") pending.catch(() => {});
+        } else {
+          try { await trustedClick(view, choice.x, choice.y); } catch {}
+        }
+        const pause = Date.now() + (href ? 1200 : 1600);
+        while (Date.now() < pause) {
+          if (job.cancel) return "cancelled";
+          if (!contentsAlive(view)) return "gone";
+          if (safeUrl(view) !== before) break;
+          await wait(200);
+        }
+      }
+      if (!contentsAlive(view)) return "gone";
+      return authLanded(name, safeUrl(view)) && (visitedGoogle || pageKey(safeUrl(view)) !== pageKey(origin)) ? "done" : "timeout";
+    })().finally(() => {
+      if (googleClickJobs.get(name) === job) googleClickJobs.delete(name);
+    });
+    return done;
+  }
+
+  async function openServiceForGoogle(name, email) {
+    const shell = getWin();
+    if (shell && !shell.isDestroyed()) shell.webContents.send("google-focus-page");
     const tabUrl = getTabs()[name] || "";
-    const existing = getViews()[name];
+    let existing = getViews()[name];
     let current = "";
     if (isViewUsable(existing)) {
       try { current = existing.webContents.getURL() || ""; } catch {}
     }
-    const plan = signInNavigation(name, current, tabUrl);
-    if (!plan.url) return;
-    const background = Boolean(getActiveTab() && getActiveTab() !== name);
+    const plan = signInNavigation(name, current, tabUrl, email);
+    if (!plan.url) return "done";
+    if (typeof options.presentService === "function") {
+      try { await options.presentService(name); } catch {}
+      existing = getViews()[name];
+    }
+    const origin = current;
     if (!isViewUsable(existing)) {
-      createTab(name, plan.url, { background, googleClick: plan.googleClick });
-      return;
+      const background = Boolean(getActiveTab() && getActiveTab() !== name);
+      createTab(name, plan.url, { background });
+      existing = getViews()[name];
+      if (!isViewUsable(existing)) return "gone";
+      await ensureLaidOut(existing, name);
+      return armGoogleClick(existing, name, { email, origin });
     }
-    if (plan.googleClick) armGoogleClick(existing, name, { waitForLoad: plan.load });
-    if (plan.load) existing.webContents.loadURL(plan.url);
-    else if (plan.reload) {
-      if (typeof existing.webContents.reloadIgnoringCache === "function") existing.webContents.reloadIgnoringCache();
-      else existing.webContents.reload();
+    await ensureLaidOut(existing, name);
+    if (plan.load) {
+      try { await existing.webContents.loadURL(plan.url); } catch {}
+    } else if (plan.reload) {
+      await waitForNavigation(existing, () => {
+        if (typeof existing.webContents.reloadIgnoringCache === "function") existing.webContents.reloadIgnoringCache();
+        else existing.webContents.reload();
+      });
     }
+    const loadingDeadline = Date.now() + 8000;
+    while (contentsAlive(existing) && mainFrameLoading(existing) && Date.now() < loadingDeadline) {
+      await wait(200);
+    }
+    if (!contentsAlive(existing)) return "gone";
+    return armGoogleClick(existing, name, { email, origin });
   }
 
   async function rememberGoogleEmail(page) {
@@ -337,22 +478,39 @@ function createGoogleSession(options = {}) {
 
   async function applySharedGoogle() {
     const source = googleSession();
-    const cookies = await source.cookies.get({});
+    const cookies = await googleCookies(source);
     if (!hasGoogleSession(cookies)) {
       openGoogleChooser(GOOGLE_PARTITION);
       return publishGoogle();
     }
     const book = readGoogleBook();
-    for (const profile of googleProfiles(book)) {
-      if (!profile.shared) continue;
+    const email = book.email || "";
+    const shared = googleProfiles(book).filter((profile) => profile.shared);
+    for (const profile of shared) {
       const partition = services.partitionFor(profile.serviceId, profile.accountId);
       if (!partition) continue;
       const target = session.fromPartition(partition);
       await clearGoogleCookies(target);
       await copyGoogleCookies(source, target);
-      // Copied Google cookies do not create the chat's own session. Open the
-      // sign-in page and continue with Google; Gemini itself reads the cookies.
-      if (services.activeAccountId(profile.serviceId) === profile.accountId) openServiceForGoogle(profile.serviceId);
+    }
+    const activeName = getActiveTab();
+    const visible = shared.filter((profile) => (
+      services.activeAccountId(profile.serviceId) === profile.accountId
+      && !(typeof services.hidden === "function" && services.hidden(profile.serviceId))
+    ));
+    visible.sort((a, b) => Number(b.serviceId === activeName) - Number(a.serviceId === activeName));
+    let needsUser = "";
+    for (const profile of visible) {
+      // The chat's own session is created only after Continue with Google.
+      // Cookie copy alone leaves every service logged out.
+      const result = await openServiceForGoogle(profile.serviceId, email);
+      if (result === "form") needsUser = profile.serviceId;
+    }
+    if (typeof options.presentService === "function") {
+      const back = needsUser || activeName;
+      if (back) {
+        try { await options.presentService(back); } catch {}
+      }
     }
     return publishGoogle();
   }
@@ -418,13 +576,15 @@ function createGoogleSession(options = {}) {
     book.isolated = true;
     writeGoogleBook(book);
     const source = googleSession();
-    const cookies = await source.cookies.get({});
+    const cookies = await googleCookies(source);
     if (hasGoogleSession(cookies)) {
       const partition = services.partitionFor(target.serviceId, target.accountId);
       const sessionTarget = session.fromPartition(partition);
       await clearGoogleCookies(sessionTarget);
       await copyGoogleCookies(source, sessionTarget);
-      if (services.activeAccountId(target.serviceId) === target.accountId) openServiceForGoogle(target.serviceId);
+      if (services.activeAccountId(target.serviceId) === target.accountId) {
+        await openServiceForGoogle(target.serviceId, book.email || "");
+      }
     }
     return publishGoogle();
   });
