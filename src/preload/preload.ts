@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   googleUseShared: (profile: unknown) => invoke("google-use-shared", profile),
   googleUseOther: (profile: unknown) => invoke("google-use-other", profile),
   onGoogle: (cb: (status: unknown) => void) => listen("google-status", cb),
+  onGoogleFocus: (cb: () => void) => listen("google-focus-page", cb),
   servicesList: () => invoke("services-list"),
   servicesSetRoute: (payload: unknown) => invoke("services-set-route", payload),
   servicesSetHidden: (payload: unknown) => invoke("services-set-hidden", payload),

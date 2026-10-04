@@ -1,6 +1,7 @@
 (function () {
   /** @type {any} */
   let state = { signedIn: false, email: "", profiles: [] };
+  let applying = false;
 
   function panel() {
     return document.getElementById("google-panel");
@@ -17,7 +18,8 @@
       ? (state.email || "Google account connected")
       : "No shared Google account yet";
     signIn.textContent = state.signedIn ? "Change shared account" : "Sign in with Google";
-    apply.disabled = !state.signedIn;
+    apply.disabled = applying || !state.signedIn;
+    if (!applying) apply.textContent = "Sign in shared profiles";
     if (button) {
       button.classList.toggle("google-on", state.signedIn);
       button.title = state.email ? ("Google · " + state.email) : "Sign in with Google";
@@ -120,18 +122,22 @@
     });
     document.getElementById("google-apply").addEventListener("click", () => {
       const apply = document.getElementById("google-apply");
+      applying = true;
       apply.disabled = true;
       apply.textContent = "Signing in…";
+      // The open panel gives the chat page no height, so the sign-in click
+      // never lands. Close it before the pages are asked to sign in.
+      closePanel();
       window.electronAPI.googleApplyAll().then((next) => {
+        applying = false;
         applyStatus(next);
-        apply.textContent = "Sign in shared profiles";
-        closePanel();
       }).catch((err) => {
+        applying = false;
         showError(err);
-        apply.disabled = !state.signedIn;
-        apply.textContent = "Sign in shared profiles";
+        render();
       });
     });
+    if (window.electronAPI.onGoogleFocus) window.electronAPI.onGoogleFocus(() => closePanel());
     window.electronAPI.onGoogle(applyStatus);
     window.electronAPI.googleStatus().then((status) => {
       applyStatus(status);

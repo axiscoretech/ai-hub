@@ -20,7 +20,7 @@ const { createProxyRouting } = require("./proxy-routing");
 const { createTasks } = require("./tasks");
 const { createServices } = require("./services");
 const { streamEnded, streamStarted } = require("./stream-end");
-const { GOOGLE_PARTITION } = require("./google");
+const { GOOGLE_PARTITION, authLanded } = require("./google");
 const {
   inspectOpenClaw,
   startOpenClawGateway,
@@ -608,6 +608,65 @@ function attachReloadShortcuts(webContents, reloadHandler = reloadActiveTab) {
   });
 }
 
+function watchAuthPopup(popup, tabName) {
+  if (!popup || popup.isDestroyed?.()) return;
+  let handedOff = false;
+  let sawAuth = false;
+  const finish = (navigatedUrl) => {
+    if (!navigatedUrl) return;
+    if (isAuthPopupUrl(navigatedUrl) || isGoogleAccountUrlSafe(navigatedUrl)) sawAuth = true;
+    // A chat can open its own page in a popup. Only take the tab back after
+    // the popup has actually been to an identity provider.
+    if (!sawAuth || handedOff || !isServiceUrlForTab(tabName, navigatedUrl) || !authLanded(tabName, navigatedUrl)) return;
+    handedOff = true;
+    void deliverAuthToTab(tabName, navigatedUrl).then(() => {
+      if (popup.isDestroyed()) return;
+      setTimeout(() => {
+        try { if (!popup.isDestroyed()) popup.close(); } catch {}
+      }, 250);
+    });
+  };
+  popup.webContents.on("did-navigate", (_event, navigatedUrl) => finish(navigatedUrl));
+  popup.webContents.on("did-navigate-in-page", (_event, navigatedUrl) => finish(navigatedUrl));
+  popup.webContents.on("did-finish-load", () => {
+    try { finish(popup.webContents.getURL()); } catch {}
+  });
+  popup.on("closed", () => {
+    if (handedOff || !sawAuth) return;
+    const view = views[tabName];
+    if (!isViewUsable(view)) return;
+    let current = "";
+    try { current = view.webContents.getURL() || ""; } catch { return; }
+    if (authLanded(tabName, current)) return;
+    try { view.webContents.reload(); } catch {}
+  });
+}
+
+function isGoogleAccountUrlSafe(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "accounts.google.com" || host.endsWith(".accounts.google.com");
+  } catch {
+    return false;
+  }
+}
+
+async function deliverAuthToTab(tabName, navigatedUrl) {
+  rememberTabUrl(tabName, navigatedUrl);
+  try {
+    const targetSession = session.fromPartition(partitionForTab(tabName));
+    await targetSession.cookies.flushStore?.();
+    await targetSession.flushStorageData?.();
+  } catch {}
+  if (activeTab === tabName || !isViewUsable(views[tabName])) {
+    destroyTabView(tabName);
+    createTab(tabName, navigatedUrl);
+    if (win && !win.isDestroyed()) win.webContents.send("tab-active", tabName);
+  } else {
+    try { views[tabName].webContents.loadURL(navigatedUrl); } catch {}
+  }
+}
+
 function openPopupWindow(tabName, url) {
   const popup = new BrowserWindow({
     width: 520,
@@ -631,7 +690,7 @@ function openPopupWindow(tabName, url) {
   attachReloadShortcuts(popup.webContents, (ignoreCache) => reloadWebContents(popup.webContents, ignoreCache));
   const finishAuthHandoff = async (navigatedUrl) => {
     if (handedOffToMainView) return;
-    if (!isServiceUrlForTab(tabName, navigatedUrl)) return;
+    if (!isServiceUrlForTab(tabName, navigatedUrl) || !authLanded(tabName, navigatedUrl)) return;
 
     handedOffToMainView = true;
     rememberTabUrl(tabName, navigatedUrl);
@@ -642,10 +701,12 @@ function openPopupWindow(tabName, url) {
       await targetSession.flushStorageData?.();
     } catch {}
 
-    if (activeTab === tabName) {
+    if (activeTab === tabName || !isViewUsable(views[tabName])) {
       destroyTabView(tabName);
       createTab(tabName, navigatedUrl);
-      win.webContents.send("tab-active", tabName);
+      if (win && !win.isDestroyed()) win.webContents.send("tab-active", tabName);
+    } else {
+      try { views[tabName].webContents.loadURL(navigatedUrl); } catch {}
     }
 
     if (!popup.isDestroyed()) {
@@ -815,7 +876,9 @@ function createTab(name, url = getTabUrl(name), options: any = {}) {
   });
 
   attachExternalLinkGuard(view.webContents, name);
-  if (options.googleClick) armGoogleClick(view, name);
+  view.webContents.on("did-create-window", (popup) => {
+    watchAuthPopup(popup, name);
+  });
   if (!options.background) activeTab = name;
   if (name === OPENCLAW_TAB) view.openclawLoadPending = true;
   // The first navigation has to wait until the proxy is applied. Otherwise a
@@ -1120,7 +1183,6 @@ function taskIpcError(err) {
 }
 
 const {
-  armGoogleClick,
   isolateUnsharedProfiles,
   profileSawSite,
   closeWindow: closeGoogleWindow,
@@ -1137,6 +1199,27 @@ const {
   applyWebRTCPolicyToContents,
   themeColor,
   openClawTab: OPENCLAW_TAB,
+  presentService: async (name) => {
+    if (!tabs[name]) return null;
+    if (name === OPENCLAW_TAB) {
+      switchTab(name);
+      return null;
+    }
+    if (isBoardWorkspace()) await commitWorkspace("chat");
+    switchTab(name);
+    if (!win || win.isDestroyed()) return null;
+    const [, height] = win.getContentSize();
+    // The Google panel pushes the page below the window. A zero-height page
+    // cannot show a sign-in button, so give the page the toolbar inset back.
+    if (topBarHeight > height - 200) topBarHeight = 60;
+    const view = views[name];
+    if (!isViewUsable(view)) return null;
+    resizeView(view);
+    try { win.show(); } catch {}
+    try { win.focus(); } catch {}
+    try { view.webContents.focus(); } catch {}
+    return view;
+  },
 });
 
 // ── IPC ─────────────────────────────────────────────────────────────────────
