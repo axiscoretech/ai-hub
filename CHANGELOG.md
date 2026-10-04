@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.42.3 Answer
+
+- Sign in shared profiles closes the panel, opens each shared profile at full size, and continues with a real Google click. The chat page is no longer squeezed to zero height.
+
 ## 1.42.2 Answer
 
 - Sign in shared profiles signs each shared profile in with the shared Google account. The tabs no longer stop on a logged-out home page.

@@ -1,6 +1,6 @@
 {
   "name": "ai-hub",
-  "version": "1.42.2",
+  "version": "1.42.3",
   "description": "Desktop AI Hub — all your AI services in one place",
   "main": "out/main/main.js",
   "homepage": "https://github.com/axiscoretech/ai-hub",
